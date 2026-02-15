@@ -175,18 +175,17 @@ ci-watch:
 	@echo "🔍 Monitoring PR #$(PR) CI status..."
 	@echo ""
 	@while true; do \
-		CHECKS=$$(gh pr checks $(PR) --json state,bucket,name 2>&1); \
-		PENDING=$$(echo "$$CHECKS" | jq '[.[] | select(.state != "SUCCESS" and .state != "FAILURE")] | length'); \
-		FAILED=$$(echo "$$CHECKS" | jq '[.[] | select(.bucket == "fail")] | length'); \
-		TOTAL=$$(echo "$$CHECKS" | jq 'length'); \
-		if [ $$PENDING -gt 0 ]; then \
+		PENDING=$$(gh pr checks $(PR) --json bucket --jq '[.[] | select(.bucket == "pending")] | length'); \
+		FAILED=$$(gh pr checks $(PR) --json bucket --jq '[.[] | select(.bucket == "fail")] | length'); \
+		TOTAL=$$(gh pr checks $(PR) --json bucket --jq 'length'); \
+		if [ "$$PENDING" -gt 0 ]; then \
 			COMPLETED=$$(($$TOTAL - $$PENDING)); \
-			echo "⏳ $$COMPLETED/$$TOTAL checks completed..."; \
+			echo "⏳ $$COMPLETED/$$TOTAL checks completed ($$PENDING pending)..."; \
 			sleep 10; \
-		elif [ $$FAILED -gt 0 ]; then \
+		elif [ "$$FAILED" -gt 0 ]; then \
 			echo ""; \
 			echo "❌ $$FAILED/$$TOTAL CI check(s) FAILED:"; \
-			echo "$$CHECKS" | jq -r '.[] | select(.bucket == "fail") | "  - " + .name'; \
+			gh pr checks $(PR) --json bucket,name --jq '.[] | select(.bucket == "fail") | "  - " + .name'; \
 			echo ""; \
 			echo "Check details: gh pr view $(PR) --web"; \
 			echo "After fixing, re-run: make ci-watch PR=$(PR)"; \
