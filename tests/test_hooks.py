@@ -510,27 +510,28 @@ def test_error_handling_invalid_json(temp_context_dir, capsys):
     import logger as logger_module
     logger_module.TMP_DIR = temp_context_dir / ".tmp"
 
-    # Mock stdin to raise JSONDecodeError
-    with patch("sys.stdin", MagicMock()):
-        with patch("json.load", side_effect=json.JSONDecodeError("Invalid", "", 0)):
-            spec.loader.exec_module(user_prompt_module)
+    # Mock stdin to return invalid JSON string
+    mock_stdin = MagicMock()
+    mock_stdin.read.return_value = "{invalid json content"
 
-            # Should not raise exception
-            try:
-                user_prompt_module.main()
-            except SystemExit as e:
-                # Verify exit code is 0 (don't block)
-                assert e.code == 0
+    with patch("sys.stdin", mock_stdin):
+        spec.loader.exec_module(user_prompt_module)
 
-    # Verify error was logged to stderr
+        # Should not raise exception
+        try:
+            user_prompt_module.main()
+        except SystemExit as e:
+            # Verify exit code is 0 (don't block)
+            assert e.code == 0
+
+    # Verify output (error is returned via stdout, not stderr, to avoid Claude error display)
     captured = capsys.readouterr()
 
-    # Error should be in stderr
-    if captured.err:
-        error_output = json.loads(captured.err)
-        assert "hookSpecificOutput" in error_output
-        assert error_output["hookSpecificOutput"]["status"] == "error"
-        assert "error" in error_output["hookSpecificOutput"]
+    if captured.out.strip():
+        output = json.loads(captured.out)
+        assert "hookSpecificOutput" in output
+        assert output["hookSpecificOutput"]["status"] == "error"
+        assert "error" in output["hookSpecificOutput"]
 
 
 # ============================================================================

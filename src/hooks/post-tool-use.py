@@ -41,10 +41,10 @@ def main():
         # Format content for logging
         content = f"Tool: {tool_name}\n"
         if tool_input:
-            content += f"Input: {json.dumps(tool_input, indent=2)}\n"
+            content += f"Input: {json.dumps(tool_input, indent=2, ensure_ascii=False)}\n"
         # Convert tool_response to string if it's a dict
         if isinstance(tool_response, dict):
-            content += f"Result: {json.dumps(tool_response, indent=2)}"
+            content += f"Result: {json.dumps(tool_response, indent=2, ensure_ascii=False)}"
         else:
             content += f"Result: {tool_response}"
 
