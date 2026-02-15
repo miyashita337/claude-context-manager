@@ -1,7 +1,7 @@
 # Claude Context Manager - Makefile
 # 便利なショートカットコマンド集
 
-.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks
+.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch
 
 # デフォルトターゲット: ヘルプを表示
 help:
@@ -22,6 +22,9 @@ help:
 	@echo "  make fix-hooks        - Hook設定の自動修復（バックアップから復元）"
 	@echo "  make backup-hooks     - Hook設定のバックアップ作成"
 	@echo "  make restore-hooks    - Hook設定をバックアップから復元"
+	@echo ""
+	@echo "🔄 CI/CD:"
+	@echo "  make ci-watch PR=<n>  - PR #nのCI監視（自動リトライ）"
 	@echo ""
 	@echo "📦 開発:"
 	@echo "  make install          - 全ての依存関係をインストール"
@@ -161,3 +164,37 @@ backup-hooks:
 # Hook設定をバックアップから復元
 restore-hooks:
 	@bash scripts/restore-hooks.sh
+
+# CI監視（自動リトライ）
+ci-watch:
+	@if [ -z "$(PR)" ]; then \
+		echo "❌ ERROR: PR number required"; \
+		echo "Usage: make ci-watch PR=<number>"; \
+		exit 1; \
+	fi
+	@echo "🔍 Monitoring PR #$(PR) CI status..."
+	@echo ""
+	@while true; do \
+		CHECKS=$$(gh pr checks $(PR) --json state,bucket,name 2>&1); \
+		PENDING=$$(echo "$$CHECKS" | jq '[.[] | select(.state != "SUCCESS" and .state != "FAILURE")] | length'); \
+		FAILED=$$(echo "$$CHECKS" | jq '[.[] | select(.bucket == "fail")] | length'); \
+		TOTAL=$$(echo "$$CHECKS" | jq 'length'); \
+		if [ $$PENDING -gt 0 ]; then \
+			COMPLETED=$$(($$TOTAL - $$PENDING)); \
+			echo "⏳ $$COMPLETED/$$TOTAL checks completed..."; \
+			sleep 10; \
+		elif [ $$FAILED -gt 0 ]; then \
+			echo ""; \
+			echo "❌ $$FAILED/$$TOTAL CI check(s) FAILED:"; \
+			echo "$$CHECKS" | jq -r '.[] | select(.bucket == "fail") | "  - " + .name'; \
+			echo ""; \
+			echo "Check details: gh pr view $(PR) --web"; \
+			echo "After fixing, re-run: make ci-watch PR=$(PR)"; \
+			exit 1; \
+		else \
+			echo ""; \
+			echo "✅ All $$TOTAL CI checks passed!"; \
+			gh pr checks $(PR); \
+			exit 0; \
+		fi; \
+	done
