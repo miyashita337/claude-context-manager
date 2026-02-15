@@ -1,24 +1,30 @@
 # Claude Context Manager - Makefile
 # 便利なショートカットコマンド集
 
-.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check
+.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks
 
 # デフォルトターゲット: ヘルプを表示
 help:
 	@echo "Claude Context Manager - 利用可能なコマンド:"
 	@echo ""
-	@echo "  make startup-check - セッション起動時の健全性チェック"
-	@echo "  make install       - 全ての依存関係をインストール"
-	@echo "  make test-all      - 全てのテスト（Python + TypeScript）を実行"
-	@echo "  make test-python   - Pythonテストのみ実行"
-	@echo "  make test-ts       - TypeScriptテストのみ実行"
-	@echo "  make test-watch    - テストをwatch モードで実行（TypeScript）"
-	@echo "  make lint          - Pythonコードのリント"
-	@echo "  make format        - Pythonコードのフォーマット"
-	@echo "  make format-check  - フォーマットチェック（CI用）"
-	@echo "  make build         - TypeScriptをビルド"
-	@echo "  make dev           - 開発モードで実行"
-	@echo "  make clean         - ビルド成果物とキャッシュを削除"
+	@echo "🚀 セッション管理:"
+	@echo "  make startup-check    - セッション起動時の健全性チェック"
+	@echo ""
+	@echo "🔒 Git操作（安全性優先）:"
+	@echo "  make pre-git-check    - Git操作前の必須チェック"
+	@echo "  make git-clean        - 不要ファイル削除（__pycache__, *.pyc, *.backup）"
+	@echo "  make git-safe-push    - 安全なGit push（チェック付き）"
+	@echo "  make git-hooks        - Git hooksインストール（pre-commit）"
+	@echo ""
+	@echo "📦 開発:"
+	@echo "  make install          - 全ての依存関係をインストール"
+	@echo "  make test-all         - 全てのテスト（Python + TypeScript）"
+	@echo "  make test-python      - Pythonテストのみ"
+	@echo "  make test-ts          - TypeScriptテストのみ"
+	@echo "  make lint             - Pythonコードのリント"
+	@echo "  make format           - Pythonコードのフォーマット"
+	@echo "  make build            - TypeScriptをビルド"
+	@echo "  make clean            - ビルド成果物とキャッシュを削除"
 	@echo ""
 
 # 依存関係のインストール
@@ -93,3 +99,34 @@ format-check:
 # セッション起動時チェック
 startup-check:
 	@bash scripts/startup-check.sh
+
+# Git操作前チェック（安定性優先）
+pre-git-check:
+	@bash scripts/pre-git-check.sh
+
+# Git不要ファイル削除
+git-clean:
+	@echo "不要ファイルを削除中..."
+	@find . -type d -name "__pycache__" -not -path "./.git/*" -exec rm -rf {} + 2>/dev/null || true
+	@find . -type f -name "*.pyc" -not -path "./.git/*" -delete 2>/dev/null || true
+	@find . -type f -name "*.pyo" -not -path "./.git/*" -delete 2>/dev/null || true
+	@find . -type f \( -name "*.backup" -o -name "*.bak" \) -not -path "./.git/*" -delete 2>/dev/null || true
+	@echo "✅ クリーンアップ完了"
+
+# 安全なGit push（チェック統合）
+git-safe-push: pre-git-check
+	@echo ""
+	@echo "📊 Git Status:"
+	@git status --short
+	@echo ""
+	@read -p "Continue with push? (yes/no): " answer; \
+	if [ "$$answer" = "yes" ]; then \
+		git push; \
+		echo "✅ Push complete"; \
+	else \
+		echo "❌ Push cancelled"; \
+	fi
+
+# Git hooksインストール
+git-hooks:
+	@bash scripts/install-git-hooks.sh

@@ -1,0 +1,63 @@
+# 品質ゲート設定
+# 安定性 > 開発速度 > セキュリティ
+
+gates:
+  # ==========================================
+  # Pre-commit Gate（安定性優先）
+  # ==========================================
+  - name: "Stability Gate"
+    stage: "pre-commit"
+    critical: true
+    checks:
+      - type: "gitignore"
+        required_patterns:
+          - "__pycache__/"
+          - "*.pyc"
+          - ".env"
+          - "*.backup"
+
+      - type: "unwanted-files"
+        deny_patterns:
+          - "**/__pycache__"
+          - "**/*.pyc"
+          - "**/*.backup"
+
+  # ==========================================
+  # Security Gate（セキュリティ）
+  # ==========================================
+  - name: "Security Gate"
+    stage: "pre-commit"
+    critical: true
+    checks:
+      - type: "secret-scan"
+        tool: "scripts/pre-git-check.sh"
+        fail_on: "error"
+
+      - type: "file-check"
+        patterns:
+          - ".env"
+          - "*.key"
+          - "credentials.*"
+        action: "deny"
+
+  # ==========================================
+  # Code Quality Gate（開発速度）
+  # ==========================================
+  - name: "Code Quality Gate"
+    stage: "pre-commit"
+    critical: false
+    checks:
+      - type: "lint"
+        tool: "ruff check ."
+        fail_on: "warning"
+
+  # ==========================================
+  # Integration Gate（pre-push - Lightweight）
+  # ==========================================
+  - name: "Integration Gate"
+    stage: "pre-push"
+    critical: false
+    checks:
+      - type: "stability-check"
+        note: "Full tests run in GitHub Actions CI"
+        fail_on: "never"
