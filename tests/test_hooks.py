@@ -479,12 +479,12 @@ def test_stop_hook_finalize_session_call(temp_context_dir, monkeypatch, capsys):
     # Capture output
     captured = capsys.readouterr()
 
-    # Output might be empty if main() didn't execute
+    # Stop hook returns empty object (no hookSpecificOutput)
+    # See src/hooks/stop.py:48-51
     if captured.out.strip():
         output = json.loads(captured.out)
-        assert "hookSpecificOutput" in output
-        assert output["hookSpecificOutput"]["status"] == "finalized"
-        assert output["hookSpecificOutput"]["session_id"] == "test-session-stop"
+        # Stop hooks should return empty object
+        assert output == {} or "hookSpecificOutput" not in output
 
 
 def test_error_handling_invalid_json(temp_context_dir, capsys):

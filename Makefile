@@ -1,7 +1,7 @@
 # Claude Context Manager - Makefile
 # 便利なショートカットコマンド集
 
-.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks
+.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks
 
 # デフォルトターゲット: ヘルプを表示
 help:
@@ -15,6 +15,13 @@ help:
 	@echo "  make git-clean        - 不要ファイル削除（__pycache__, *.pyc, *.backup）"
 	@echo "  make git-safe-push    - 安全なGit push（チェック付き）"
 	@echo "  make git-hooks        - Git hooksインストール（pre-commit）"
+	@echo ""
+	@echo "🔧 Hook管理:"
+	@echo "  make validate-hooks   - Hook設定の検証（整合性チェック含む）"
+	@echo "  make test-hooks       - Hook動作テスト"
+	@echo "  make fix-hooks        - Hook設定の自動修復（バックアップから復元）"
+	@echo "  make backup-hooks     - Hook設定のバックアップ作成"
+	@echo "  make restore-hooks    - Hook設定をバックアップから復元"
 	@echo ""
 	@echo "📦 開発:"
 	@echo "  make install          - 全ての依存関係をインストール"
@@ -130,3 +137,27 @@ git-safe-push: pre-git-check
 # Git hooksインストール
 git-hooks:
 	@bash scripts/install-git-hooks.sh
+
+# Hook設定の検証（整合性チェック含む）
+validate-hooks:
+	@bash scripts/validate-hooks.sh
+
+# Hook動作テスト（設定検証 + Pythonテスト実行）
+test-hooks: validate-hooks
+	@echo ""
+	@echo "=== Hook Tests ==="
+	@python3 -m pytest tests/test_hooks.py -v --tb=short
+
+# Hook設定の自動修復（バックアップから復元）
+fix-hooks:
+	@bash scripts/restore-hooks.sh
+	@echo ""
+	@bash scripts/validate-hooks.sh
+
+# Hook設定のバックアップ作成
+backup-hooks:
+	@bash scripts/backup-hooks.sh
+
+# Hook設定をバックアップから復元
+restore-hooks:
+	@bash scripts/restore-hooks.sh

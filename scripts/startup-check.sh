@@ -65,30 +65,13 @@ else
 fi
 echo ""
 
-# 4. Hook設定確認
-echo "4. Hook設定確認..."
-if [ -f .claude/hooks/hooks.json ]; then
-    print_ok "プロジェクトhook: 存在"
-
-    if grep -q '"UserPromptSubmit"' .claude/hooks/hooks.json; then
-        print_ok "UserPromptSubmit: 設定済み"
-    else
-        print_fail "UserPromptSubmit: 未設定"
-    fi
-
-    if grep -q '"PostToolUse"' .claude/hooks/hooks.json; then
-        print_ok "PostToolUse: 設定済み"
-    else
-        print_fail "PostToolUse: 未設定"
-    fi
-
-    if grep -q '"Stop"' .claude/hooks/hooks.json; then
-        print_ok "Stop: 設定済み"
-    else
-        print_fail "Stop: 未設定"
-    fi
+# 4. Hook設定検証（整合性チェック含む）
+echo "4. Hook設定検証..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if bash "$SCRIPT_DIR/validate-hooks.sh" > /dev/null 2>&1; then
+    print_ok "Hook設定検証: 全チェック通過"
 else
-    print_fail "プロジェクトhook: 見つかりません"
+    print_fail "Hook設定検証: 問題あり（詳細は make validate-hooks で確認）"
 fi
 echo ""
 
