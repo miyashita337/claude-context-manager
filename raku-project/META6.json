@@ -1,0 +1,21 @@
+{
+  "name": "winmac-raku",
+  "version": "0.0.1",
+  "description": "Cross-platform Raku project for Windows and macOS",
+  "authors": [
+    "Your Name"
+  ],
+  "license": "MIT",
+  "depends": [],
+  "build-depends": [],
+  "test-depends": [],
+  "provides": {
+    "WinMac::Main": "lib/WinMac/Main.rakumod"
+  },
+  "resources": [],
+  "tags": [
+    "raku",
+    "cross-platform"
+  ],
+  "source-url": ""
+}

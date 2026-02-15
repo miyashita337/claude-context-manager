@@ -1,0 +1,36 @@
+{
+  "name": "mcp-chatgpt-server",
+  "version": "1.0.0",
+  "description": "MCP server for integrating ChatGPT API with Claude Code",
+  "type": "module",
+  "main": "build/index.js",
+  "bin": {
+    "research-tool": "./build/cli/research.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "dev": "tsc && node build/index.js",
+    "start": "node build/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "chatgpt",
+    "openai",
+    "claude"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "commander": "^14.0.3",
+    "dotenv": "^16.4.7",
+    "openai": "^4.77.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}

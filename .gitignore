@@ -1,0 +1,62 @@
+# Build artifacts
+build/
+dist/
+*.precomp
+.precomp/
+
+# Dependencies
+node_modules/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+*~
+*.swp
+*.swo
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+.pytest_cache/
+
+# Temporary files
+*.tmp
+.cache/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Backup files
+*.backup
+*.bak
+*~
+
+# Private documentation (monetization, legal)
+PRINCIPAL.md
+
+# DO NOT IGNORE:
+# - src/
+# - tests/
+# These directories contain project source code and should be tracked
