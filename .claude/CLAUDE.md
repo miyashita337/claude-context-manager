@@ -121,6 +121,162 @@ make test-ts        # TypeScriptのみ
 
 ---
 
+## Skills使用方法（新機能）
+
+### 利用可能なSkills
+
+#### `/fact-check` - 公式ドキュメント照合
+**用途**: 実装内容が公式ドキュメントと一致しているか検証
+
+```bash
+# 使用例
+/fact-check "Verify Claude Code hook paths are official"
+/fact-check "Check if .claude/settings.json is the correct hook configuration path"
+```
+
+**特徴**:
+- WebSearch/WebFetchで公式ドキュメント検索
+- 現在の実装と比較
+- 差異を詳細レポート
+
+**いつ使うか**:
+- 新機能実装前
+- 予期しない動作が発生した時
+- 設定パスやフォーマットが不明な時
+
+---
+
+#### `/pre-commit` - コミット前自動チェック
+**用途**: `make pre-git-check`を実行し、エラーを自動解決
+
+```bash
+# 使用例
+/pre-commit
+```
+
+**実行内容**:
+1. `make pre-git-check`実行
+2. エラー検出時、PITFALLS.mdを自動検索
+3. 安全な修正を自動適用
+4. 再チェック実行
+
+**自動修正例**:
+- 機密情報検出 → unstage + .gitignoreに追加
+- 不要ファイル検出 → .gitignoreに追加
+- 初期コミットHEADエラー → 正しいコマンド提案
+
+---
+
+#### `/git-workflow` - 安全なGit操作ガイド
+**用途**: Git操作を安全にガイド（初期コミット対応、force push防止）
+
+```bash
+# 使用例
+/git-workflow
+```
+
+**保護機能**:
+- 初期コミット検出とHEADエラー防止
+- force push防止（main/master）
+- コミット前セキュリティチェック
+- 段階的ガイダンス
+
+**特に有用なシーン**:
+- 新規リポジトリでの初回コミット
+- main/masterへのpush前
+- gitエラー発生時
+
+---
+
+### PITFALLS.md検索方法
+
+#### 手動検索
+```bash
+# エラーメッセージで検索
+grep "fatal: ambiguous argument" .claude/PITFALLS.md
+
+# エラーIDで検索
+grep "GIT-001" .claude/PITFALLS.md
+
+# タグで検索
+grep "Tags.*security" .claude/PITFALLS.md
+```
+
+#### Skills経由の自動検索
+Skillsは自動的にPITFALLS.mdを検索します：
+- `/pre-commit`: エラー発生時に自動検索・解決提案
+- `/git-workflow`: git関連エラーを自動検索
+
+---
+
+### エラー解決ワークフロー
+
+#### 標準フロー
+```
+1. エラー発生
+   ↓
+2. /pre-commit または /git-workflow 実行
+   ↓
+3. Skillが自動的にPITFALLS.md検索
+   ↓
+4. 解決策適用（自動または手動）
+   ↓
+5. 再チェック
+```
+
+#### 新規エラーの場合
+```
+1. エラー発生
+   ↓
+2. /fact-check で公式ドキュメント確認
+   ↓
+3. 手動解決
+   ↓
+4. PITFALLS.mdに新規エントリ追加
+   - 次回からSkillsが自動検出・解決
+```
+
+---
+
+### PITFALLS.mdエントリ追加方法
+
+新しいエラーパターンを発見した場合：
+
+1. **エラーIDを割り当て**
+   ```
+   GIT-003, HOOK-002, SEC-002, etc.
+   ```
+
+2. **エントリを追加**
+   ```markdown
+   ### [ERROR-ID]: [Brief Title]
+
+   **Error Signature**: `[exact error message]`
+
+   **Context**: [When this occurs]
+
+   **Root Cause**: [Why this happens]
+
+   **Solution**:
+   [step-by-step fix]
+
+   **Prevention**:
+   [how to avoid in future]
+
+   **Tags**: `[tag1]`, `[tag2]`
+
+   **Severity**: [Critical/High/Medium/Low]
+
+   **Date Added**: YYYY-MM-DD
+   ```
+
+3. **メタデータ更新**
+   - Total Entries カウントを増やす
+   - Version History に追記
+
+---
+
 ## 参照
 - [IMPROVEMENT_PLAN.md](.claude/IMPROVEMENT_PLAN.md) - 実装計画と進捗
 - [SESSION_STARTUP_CHECKLIST.md](../SESSION_STARTUP_CHECKLIST.md) - 起動時チェック
+- [PITFALLS.md](.claude/PITFALLS.md) - エラーパターンデータベース
