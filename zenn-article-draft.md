@@ -168,7 +168,7 @@ AIは強力だが、公式ドキュメントを読まない。ハルシネーシ
 ## リンク
 
 - **GitHubリポジトリ**: https://github.com/miyashita337/claude-context-manager
-- **実装PR**: https://github.com/miyashita337/claude-context-manager/pull/[PR番号]
+- **実装PR**: https://github.com/miyashita337/claude-context-manager/pull/1
   _(PITFALLS.md + Skills + テストの完全な実装)_
 
 **文字数**: 約1850字
