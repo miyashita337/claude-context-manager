@@ -30,22 +30,47 @@ jobs:
       run: |
         echo "=== Custom Secret Scan ==="
 
+        # 除外パターンを構築（.secretsignoreから）
+        EXCLUDE_ARGS=""
+        if [ -f .secretsignore ]; then
+          while IFS= read -r line || [ -n "$line" ]; do
+            # コメント行と空行をスキップ
+            if [[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "$line" ]]; then
+              continue
+            fi
+            # ディレクトリやワイルドカードパターンをスキップ（ファイルパスのみ対象）
+            if [[ "$line" =~ / ]] || [[ "$line" =~ \* ]]; then
+              continue
+            fi
+            # git grep の除外パターンに追加
+            EXCLUDE_ARGS="$EXCLUDE_ARGS -- ':!${line}'"
+          done < .secretsignore
+        fi
+
+        # ドキュメントファイルを明示的に除外
+        EXCLUDE_ARGS="$EXCLUDE_ARGS -- ':!RESEARCH_TOOL_SETUP.md' -- ':!mcp-chatgpt-server/README.md' -- ':!.claude/commands/research.md' -- ':!.claude/retrospective.md' -- ':!README.md'"
+
         # OpenAI API keys
-        if git grep -nE 'sk-proj-[a-zA-Z0-9_-]{20,}' || \
-           git grep -nE 'sk-[a-zA-Z0-9_-]{20,}'; then
-          echo "❌ OpenAI API key detected"
+        OPENAI_FOUND=$(eval "git grep -nE 'sk-proj-[a-zA-Z0-9_-]{20,}' $EXCLUDE_ARGS" || true)
+        if [ -n "$OPENAI_FOUND" ]; then
+          echo "❌ OpenAI API key detected:"
+          echo "$OPENAI_FOUND"
           exit 1
         fi
 
         # Gemini API keys
-        if git grep -nE 'AIzaSy[a-zA-Z0-9_-]{33}'; then
-          echo "❌ Gemini API key detected"
+        GEMINI_FOUND=$(eval "git grep -nE 'AIzaSy[a-zA-Z0-9_-]{33}' $EXCLUDE_ARGS" || true)
+        if [ -n "$GEMINI_FOUND" ]; then
+          echo "❌ Gemini API key detected:"
+          echo "$GEMINI_FOUND"
           exit 1
         fi
 
         # Anthropic API keys
-        if git grep -nE 'sk-ant-[a-zA-Z0-9_-]{20,}'; then
-          echo "❌ Anthropic API key detected"
+        ANTHROPIC_FOUND=$(eval "git grep -nE 'sk-ant-[a-zA-Z0-9_-]{20,}' $EXCLUDE_ARGS" || true)
+        if [ -n "$ANTHROPIC_FOUND" ]; then
+          echo "❌ Anthropic API key detected:"
+          echo "$ANTHROPIC_FOUND"
           exit 1
         fi
 

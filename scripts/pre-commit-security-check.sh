@@ -81,6 +81,18 @@ for pattern in "${EXCLUDE_PATTERNS[@]}"; do
   EXCLUDE_OPTS="$EXCLUDE_OPTS --exclude-dir=$pattern"
 done
 
+# .secretsignoreから除外パターンを読み込む
+SECRETSIGNORE_PATTERNS=()
+if [ -f ".secretsignore" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    # コメント行と空行をスキップ
+    if [[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "$line" ]]; then
+      continue
+    fi
+    SECRETSIGNORE_PATTERNS+=("$line")
+  done < .secretsignore
+fi
+
 # パターンごとにスキャン
 for pattern in "${SECRETS_PATTERNS[@]}"; do
   matches=$(grep -r -E $EXCLUDE_OPTS -i "$pattern" . 2>/dev/null | \
@@ -88,6 +100,11 @@ for pattern in "${SECRETS_PATTERNS[@]}"; do
             grep -v ".git/" | \
             grep -v "dist/" | \
             grep -v "build/" || true)
+
+  # .secretsignoreのパターンで除外
+  for ignore_pattern in "${SECRETSIGNORE_PATTERNS[@]}"; do
+    matches=$(echo "$matches" | grep -v "$ignore_pattern" || true)
+  done
   if [ ! -z "$matches" ]; then
     echo -e "${RED}[ERROR]${NC} Potential secret detected:"
     echo "$matches" | head -5

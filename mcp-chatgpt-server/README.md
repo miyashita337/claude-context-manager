@@ -22,7 +22,7 @@ cp .env.example .env
 
 ```bash
 # ~/.zshrc or ~/.bash_profile
-export OPENAI_API_KEY="sk-proj-xxxxxxxxxxxxxxxxxxxxx"
+export OPENAI_API_KEY="your-openai-api-key-here"
 ```
 
 ### 3. ビルド

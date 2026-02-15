@@ -28,7 +28,7 @@ cp .env.example .env
 # .env
 
 # OpenAI (ChatGPT) - 少なくとも1つのAPIキーが必要
-OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxx
+OPENAI_API_KEY=your-openai-api-key-here
 
 # Gemini - オプション（Geminiを使う場合は設定）
 GEMINI_API_KEY=xxxxxxxxxxxxxxxxxxxxx
@@ -119,7 +119,7 @@ Claude Codeを再起動して、新しいSKILLを認識させます。
 OpenAI APIキーを取得：
 1. [OpenAI Platform](https://platform.openai.com/api-keys)にアクセス
 2. 「Create new secret key」でキーを生成
-3. `sk-proj-...`形式のキーをコピー
+3. `sk-proj-` で始まるキーをコピー
 4. `.env`ファイルに貼り付け
 
 ### GEMINI_API_KEY（オプション、Gemini使用時は必須）

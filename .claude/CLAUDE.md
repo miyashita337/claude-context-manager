@@ -23,7 +23,7 @@ make git-safe-push
 
 #### 1. Hook設定ファイル
 ```bash
-.claude/hooks/hooks.json  # プロジェクト固有のhook設定
+.claude/settings.json     # プロジェクト固有のhook設定（公式パス）
 ~/.claude/settings.json   # グローバル設定（重複注意）
 ```
 

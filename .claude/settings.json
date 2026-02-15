@@ -1,12 +1,11 @@
 {
-  "description": "Claude Context Manager - 対話履歴完全保存",
   "hooks": {
     "UserPromptSubmit": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/harieshokunin/claude-context-manager/src/hooks/user-prompt-submit.py",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/src/hooks/user-prompt-submit.py\"",
             "timeout": 5
           }
         ]
@@ -17,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/harieshokunin/claude-context-manager/src/hooks/post-tool-use.py",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/src/hooks/post-tool-use.py\"",
             "timeout": 5
           }
         ]
@@ -28,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/harieshokunin/claude-context-manager/src/hooks/stop.py",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/src/hooks/stop.py\"",
             "timeout": 10
           }
         ]
