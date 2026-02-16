@@ -73,51 +73,12 @@ git commit          # pre-commitフックが自動実行（P1実装後）
 ---
 
 ## テスト
-
-### 実行方法
-```bash
-make test-all       # 全テスト
-make test-python    # Pythonのみ
-make test-ts        # TypeScriptのみ
-```
-
-### 期待結果
-- Python: 12/13 PASS（stopフックは既知の問題）
-- TypeScript: 全PASS
+`make test-all` でテスト実行（詳細は Makefile 参照）
 
 ---
 
 ## ドキュメント管理
-
-### 役割分担
-| ファイル | 役割 | 更新タイミング |
-|---------|------|---------------|
-| README.md | プロジェクト概要、セットアップ | 機能追加時 |
-| SESSION_STARTUP_CHECKLIST.md | セッション起動時の手動チェック | 手順変更時 |
-| IMPROVEMENT_PLAN.md | 改善タスク管理 | タスク完了時 |
-| CLAUDE.md（これ） | 開発ガイドライン | ワークフロー変更時 |
-
-### 整理原則
-- **役割が明確**であること
-- **重複を削除**（ソースコードで確認できる内容は削除）
-- **簡潔に保つ**（無駄を省く）
-
----
-
-## AgentTeam活用（このプロジェクト）
-
-### 利用実績
-- セキュリティエンジニア: 機密情報検出、多層防御戦略
-- DevOpsエンジニア: Git操作改善、CI/CD統合
-- QAエンジニア: 品質ゲート、テスト戦略
-- PM: プロセス改善、プロンプト最適化
-- シニアエンジニア: アーキテクチャレビュー
-
-### 次回活用シーン
-- 大規模リファクタリング前
-- 新機能設計時
-- セキュリティ監査
-- 定期的な振り返り（タスク完了時 + 肥大化検知時）
+各ドキュメントの役割は README.md を参照。重複を避け、簡潔に保つ。
 
 ---
 
@@ -188,91 +149,54 @@ make test-ts        # TypeScriptのみ
 
 ---
 
-### PITFALLS.md検索方法
+## 調査プロセスチェックリスト（BLOCKING REQUIREMENT）
 
-#### 手動検索
-```bash
-# エラーメッセージで検索
-grep "fatal: ambiguous argument" .claude/PITFALLS.md
+### Phase 1: 証拠の収集
+- [ ] 直接観察（ユーザー報告、実行結果）> 間接証拠（ログ）> 推測
+- [ ] 矛盾する証拠を無視していないか？
+- [ ] 「証拠がない ≠ 問題ない」を認識しているか？
 
-# エラーIDで検索
-grep "GIT-001" .claude/PITFALLS.md
+### Phase 2: 仮説の検証
+- [ ] 対立仮説を2-3個立てたか？
+- [ ] **反証を探したか？**（失敗例も調査）
+- [ ] 外部検証（公式ドキュメント、実行テスト）を行ったか？
 
-# タグで検索
-grep "Tags.*security" .claude/PITFALLS.md
-```
+### Phase 3: 結論の検証
+- [ ] 全ての証拠を説明できるか？
+- [ ] 反証を最後にもう一度探したか？
+- [ ] 再現可能な形で表現しているか？
 
-#### Skills経由の自動検索
-Skillsは自動的にPITFALLS.mdを検索します：
-- `/pre-commit`: エラー発生時に自動検索・解決提案
-- `/git-workflow`: git関連エラーを自動検索
+**詳細**: プランファイルまたは過去のセッション transcript を参照
 
----
-
-### エラー解決ワークフロー
-
-#### 標準フロー
-```
-1. エラー発生
-   ↓
-2. /pre-commit または /git-workflow 実行
-   ↓
-3. Skillが自動的にPITFALLS.md検索
-   ↓
-4. 解決策適用（自動または手動）
-   ↓
-5. 再チェック
-```
-
-#### 新規エラーの場合
-```
-1. エラー発生
-   ↓
-2. /fact-check で公式ドキュメント確認
-   ↓
-3. 手動解決
-   ↓
-4. PITFALLS.mdに新規エントリ追加
-   - 次回からSkillsが自動検出・解決
-```
+**指示方法**:
+- 「調査プロセスチェックリストを使って調査してください」
+- 「確証バイアスを避けて、科学的に調査してください」
 
 ---
 
-### PITFALLS.mdエントリ追加方法
+### PITFALLS.md検索
+- 手動: `grep "エラーメッセージ" .claude/PITFALLS.md`
+- 自動: `/pre-commit`, `/git-workflow` が自動検索
 
-新しいエラーパターンを発見した場合：
+---
 
-1. **エラーIDを割り当て**
-   ```
-   GIT-003, HOOK-002, SEC-002, etc.
-   ```
+### エラー解決フロー
+1. エラー発生 → `/pre-commit` または `/git-workflow` 実行
+2. Skills が PITFALLS.md を自動検索・解決提案
+3. 新規エラーは `/fact-check` で調査 → PITFALLS.md に追加
 
-2. **エントリを追加**
-   ```markdown
-   ### [ERROR-ID]: [Brief Title]
+---
 
-   **Error Signature**: `[exact error message]`
+### PITFALLS.md エントリ追加
 
-   **Context**: [When this occurs]
+新規エラー発見時：
+1. エラーIDを割り当て（GIT-003, HOOK-002, etc.）
+2. PITFALLS.md の既存フォーマットに従ってエントリ追加：
+   - Error Signature, Context, Root Cause, Solution, Prevention
+   - Tags, Severity, Date Added
+3. メタデータ更新（Total Entries カウント）
 
-   **Root Cause**: [Why this happens]
-
-   **Solution**:
-   [step-by-step fix]
-
-   **Prevention**:
-   [how to avoid in future]
-
-   **Tags**: `[tag1]`, `[tag2]`
-
-   **Severity**: [Critical/High/Medium/Low]
-
-   **Date Added**: YYYY-MM-DD
-   ```
-
-3. **メタデータ更新**
-   - Total Entries カウントを増やす
-   - Version History に追記
+詳細: `.claude/PITFALLS.md` の既存エントリを参照。
 
 ---
 

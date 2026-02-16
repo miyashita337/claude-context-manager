@@ -531,7 +531,7 @@ def test_error_handling_invalid_json(temp_context_dir, capsys):
         output = json.loads(captured.out)
         assert "hookSpecificOutput" in output
         assert output["hookSpecificOutput"]["status"] == "error"
-        assert "error" in output["hookSpecificOutput"]
+        assert "hookEventName" in output["hookSpecificOutput"]
 
 
 # ============================================================================

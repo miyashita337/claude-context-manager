@@ -155,6 +155,181 @@ class TestHookExecution:
 
 ---
 
+### HOOK-002: UserPromptSubmit JSON Parse Error
+
+**Error Signature**:
+```
+JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+```
+
+**Context**: "UserPromptSubmit hook error" appears in Claude Code, debug log shows JSON parse failures
+
+**Root Cause**:
+1. Shell profile (`.bashrc`, `.zshrc`) prints text on startup
+2. This text pollutes the JSON stdin that hook receives
+3. Hook script fails to parse malformed JSON
+
+**Solution**:
+
+**Step 1 - Diagnose**:
+```bash
+# Check debug log for exact error
+tail -50 ~/.claude/hook-debug.log | grep -A 5 "UserPromptSubmit Error"
+```
+
+**Step 2 - Fix Shell Profile**:
+```bash
+# Add guards to .bashrc / .zshrc
+if [[ -z "$PS1" ]]; then
+    # Non-interactive shell - suppress all output
+    return
+fi
+
+# Or guard individual print statements
+[[ -n "$PS1" ]] && echo "Welcome message"
+```
+
+**Step 3 - Improve Hook Error Handling**:
+```python
+# Add stdin logging to hook script
+stdin_content = sys.stdin.read()
+
+# Log raw stdin for debugging
+debug_log = Path.home() / '.claude' / 'hook-debug.log'
+with open(debug_log, 'a') as f:
+    f.write(f"\n=== Raw stdin ===\n{repr(stdin_content)}\n")
+
+# Handle empty/invalid stdin
+if not stdin_content or not stdin_content.strip():
+    print(json.dumps({"hookSpecificOutput": {"status": "skipped"}}))
+    sys.exit(0)
+```
+
+**Step 4 - Add Stdin Sanitization (2026-02-15 Update)**:
+```python
+def sanitize_stdin(stdin_content: str, hook_name: str) -> str:
+    """Remove non-JSON text from stdin before the first '{' or '['."""
+    if not stdin_content:
+        return stdin_content
+
+    # Find first JSON character
+    start_idx = -1
+    for i, char in enumerate(stdin_content):
+        if char in ('{', '['):
+            start_idx = i
+            break
+
+    # No JSON found
+    if start_idx == -1:
+        return stdin_content
+
+    # Non-JSON prefix found - sanitize and log
+    if start_idx > 0:
+        debug_log = Path.home() / '.claude' / 'hook-debug.log'
+        try:
+            with open(debug_log, 'a', encoding='utf-8') as f:
+                f.write(f"\n=== Stdin Sanitization ({hook_name}) ===\n")
+                f.write(f"Removed {start_idx} bytes of non-JSON prefix\n")
+                f.write(f"Prefix content: {repr(stdin_content[:start_idx])}\n")
+        except:
+            pass
+        return stdin_content[start_idx:]
+
+    return stdin_content
+
+# Use in main():
+stdin_content = sys.stdin.read()
+if not stdin_content or not stdin_content.strip():
+    print(json.dumps({"hookSpecificOutput": {"status": "skipped"}}))
+    sys.exit(0)
+
+# NEW: Sanitize before parsing
+stdin_content = sanitize_stdin(stdin_content, "UserPromptSubmit")
+input_data = json.loads(stdin_content)
+```
+
+**Prevention**:
+- Guard all shell profile output with `[[ -n "$PS1" ]]` check
+- **Add stdin sanitization to all hook scripts** (implemented 2026-02-15)
+- Log raw stdin in hook scripts for debugging
+- Test hooks with: `echo '{}' | python3 hook_script.py`
+- Test with polluted stdin: `echo 'GARBAGE{"key": "value"}' | python3 hook_script.py`
+- Check `$CLAUDE_CODE_REMOTE` env var (set in Claude Code context)
+
+**References**:
+- Official docs: https://code.claude.com/docs/en/hooks#json-output
+- Debug log location: `~/.claude/hook-debug.log`
+- MEMORY.md: "Hook Errors (繰り返し発生)"
+
+**Tags**: `hooks`, `json`, `shell-profile`, `stdin`, `parse-error`
+
+**Severity**: Critical (blocks user interaction)
+
+**Date Added**: 2026-02-15
+
+---
+
+### HOOK-003: stop.py Missing Empty Stdin Guard
+
+**Error Signature**:
+```
+JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+```
+(Occurs only in `stop.py`, not in other hooks)
+
+**Context**: `stop.py` crashes when Claude Code invokes it with empty stdin, while `user-prompt-submit.py` and `post-tool-use.py` handle this gracefully.
+
+**Root Cause**:
+- `user-prompt-submit.py` and `post-tool-use.py` have empty stdin guards:
+  ```python
+  stdin_content = sys.stdin.read()
+  if not stdin_content or not stdin_content.strip():
+      # graceful skip
+  ```
+- **`stop.py` uses `json.load(sys.stdin)` directly without this guard**
+
+**Solution**:
+```python
+# ❌ BEFORE (stop.py - vulnerable to empty stdin)
+def main():
+    try:
+        input_data = json.load(sys.stdin)  # Crashes on empty stdin
+
+# ✅ AFTER (stop.py - safe)
+def main():
+    try:
+        stdin_content = sys.stdin.read()
+
+        # Handle empty stdin gracefully
+        if not stdin_content or not stdin_content.strip():
+            print(json.dumps({}))
+            sys.exit(0)
+
+        # Sanitize stdin (HOOK-002)
+        stdin_content = sanitize_stdin(stdin_content, "Stop")
+
+        # Parse JSON
+        input_data = json.loads(stdin_content)
+```
+
+**Prevention**:
+- **Always use `sys.stdin.read()` + empty check pattern** (never `json.load(sys.stdin)` directly)
+- Add integration tests with empty stdin: `echo '' | python3 hook_script.py`
+- Code review checklist: "Does every hook have empty stdin guard?"
+
+**References**:
+- Discovered: 2026-02-15 team investigation (log-analyzer + script-debugger)
+- Related: HOOK-002 (stdin pollution)
+
+**Tags**: `hooks`, `stdin`, `error-handling`, `stop-hook`, `json`
+
+**Severity**: High (causes hook failures in production)
+
+**Date Added**: 2026-02-15
+
+---
+
 ## Security Errors
 
 ### SEC-001: Secret Pattern Detection
@@ -237,7 +412,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 ## Metadata
 
-**Total Entries**: 4
+**Total Entries**: 6
 **Categories**: 5
 **Phase**: 1 (0-50 entries, flat structure)
 **Next Review**: At 20 entries (consider adding indexes)
@@ -264,4 +439,5 @@ When adding a new entry:
 
 ## Version History
 
+- 2026-02-15 (Update): Added HOOK-002 stdin sanitization solution, HOOK-003 (stop.py empty stdin guard). Total: 6 entries
 - 2026-02-15: Initial creation with 4 seed entries (GIT-001, GIT-002, HOOK-001, SEC-001)
