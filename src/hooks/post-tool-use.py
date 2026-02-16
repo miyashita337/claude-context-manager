@@ -102,12 +102,71 @@ def main():
         # Get session stats (for potential future use)
         stats = logger.get_session_stats()
 
+        # Auto-monitor CI after git push
+        additional_context = f"Logged {tool_name} tool usage. Session stats: {stats['total_tokens']} tokens"
+        if tool_name == "Bash" and tool_input.get('command'):
+            command = tool_input.get('command', '')
+            # Detect git push (but not dry-run)
+            if 'git push' in command and '--dry-run' not in command:
+                try:
+                    import subprocess
+                    import os
+
+                    # Get git root directory
+                    git_root_result = subprocess.run(
+                        ['git', 'rev-parse', '--show-toplevel'],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                        cwd=Path.cwd()
+                    )
+
+                    if git_root_result.returncode == 0:
+                        repo_root = git_root_result.stdout.strip()
+
+                        # Create background script for CI monitoring
+                        ci_watch_script = f'''#!/bin/bash
+sleep 20
+cd "{repo_root}"
+BRANCH=$(git branch --show-current 2>/dev/null)
+if [ -z "$BRANCH" ]; then
+    exit 0
+fi
+PR_NUM=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null)
+if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
+    echo ""
+    echo "🔍 Auto-monitoring PR #$PR_NUM CI status (triggered by git push)..."
+    echo ""
+    make ci-watch PR=$PR_NUM
+fi
+'''
+
+                        # Write to temporary script file
+                        import tempfile
+                        with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+                            f.write(ci_watch_script)
+                            script_path = f.name
+
+                        # Make executable and run in background
+                        os.chmod(script_path, 0o755)
+                        subprocess.Popen(
+                            ['bash', script_path],
+                            start_new_session=True,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL
+                        )
+
+                        additional_context += " | 🚀 Git push detected - CI monitoring will start in 20 seconds"
+                except Exception as e:
+                    # Don't fail the hook if CI auto-watch fails
+                    pass
+
         # Return success with hookEventName
         print(json.dumps({
             "hookSpecificOutput": {
                 "hookEventName": "PostToolUse",
                 "status": "logged",
-                "additionalContext": f"Logged {tool_name} tool usage. Session stats: {stats['total_tokens']} tokens"
+                "additionalContext": additional_context
             }
         }))
         sys.exit(0)
