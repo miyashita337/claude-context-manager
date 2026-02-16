@@ -102,19 +102,8 @@ def main():
         # Get session stats (for potential future use)
         stats = logger.get_session_stats()
 
-        # Check for CI auto-fix summary
-        summary_file = Path.home() / '.claude' / 'ci-auto-fix-summary.txt'
-        ci_summary = ""
-        if summary_file.exists():
-            try:
-                ci_summary = summary_file.read_text(encoding='utf-8').strip()
-                if ci_summary:
-                    ci_summary = f" | 🔧 CI自動修正: {ci_summary}"
-            except:
-                pass
-
         # Auto-monitor CI after git push
-        additional_context = f"Logged {tool_name} tool usage. Session stats: {stats['total_tokens']} tokens{ci_summary}"
+        additional_context = f"Logged {tool_name} tool usage. Session stats: {stats['total_tokens']} tokens"
         if tool_name == "Bash" and tool_input.get('command'):
             command = tool_input.get('command', '')
             # Detect git push (but not dry-run)
@@ -159,26 +148,22 @@ def main():
                             if pr_result.returncode == 0 and pr_result.stdout.strip():
                                 pr_num = pr_result.stdout.strip()
                                 if pr_num != 'null':
-                                    # Launch CI auto-fixer in background
-                                    log_file = Path.home() / '.claude' / 'ci-watch.log'
-                                    ci_fixer_path = Path(__file__).parent / 'ci-auto-fixer.py'
+                                    # Create signal file for CI monitor agent
+                                    import time
+                                    signal_file = Path.home() / '.claude' / 'ci-monitoring-request.json'
+                                    signal_data = {
+                                        'pr_number': pr_num,
+                                        'branch': branch,
+                                        'repo_root': repo_root,
+                                        'timestamp': time.time()
+                                    }
 
-                                    # Clear log file
-                                    with open(log_file, 'w') as f:
-                                        f.write(f"🔍 CI Auto-Monitor starting for PR #{pr_num}...\n")
-                                        f.write(f"   Branch: {branch}\n")
-                                        f.write(f"   Repo: {repo_root}\n")
-                                        f.write(f"   Max retries: 4\n\n")
-
-                                    # Start CI auto-fixer in background (wait 20 seconds first)
-                                    subprocess.Popen(
-                                        ['bash', '-c', f'sleep 20 && python3 "{ci_fixer_path}" "{pr_num}" "{repo_root}" 4'],
-                                        start_new_session=True,
-                                        stdout=open(log_file, 'a'),
-                                        stderr=subprocess.STDOUT
-                                    )
-
-                                    additional_context += f" | 🚀 CI auto-monitor starting in 20s for PR #{pr_num} (log: ~/.claude/ci-watch.log)"
+                                    try:
+                                        with open(signal_file, 'w', encoding='utf-8') as f:
+                                            json.dump(signal_data, f, indent=2)
+                                        additional_context += f" | 🚀 CI監視リクエスト送信 - PR #{pr_num} (エージェントが自動処理)"
+                                    except Exception as e:
+                                        additional_context += f" | ⚠️ CI監視リクエスト失敗: {str(e)}"
                 except Exception as e:
                     # Don't fail the hook if CI auto-watch fails
                     pass
