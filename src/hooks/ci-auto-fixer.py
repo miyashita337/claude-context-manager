@@ -315,6 +315,45 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
     return True
 
 
+def create_summary_notification(failed_checks: List[Dict], repo_root: str, attempt: int) -> str:
+    """Create a 50-character summary of the problem and solution.
+
+    Returns:
+        Summary string (max 50 chars)
+    """
+    if not failed_checks:
+        return "CI失敗（詳細不明）"
+
+    # Get first failed check
+    first_check = failed_checks[0]
+    check_name = first_check.get('name', 'Unknown')
+
+    # Determine solution based on check type
+    if 'pre-commit' in check_name.lower() or 'security' in check_name.lower():
+        solution = "機密情報を自動除外"
+    elif 'lint' in check_name.lower() or 'ruff' in check_name.lower():
+        solution = "Ruff自動修正"
+    elif 'test' in check_name.lower():
+        solution = "テスト失敗（手動修正必要）"
+    else:
+        solution = "解決策検索中"
+
+    # Create summary (max 50 chars including Japanese)
+    summary = f"{check_name[:15]}→{solution}"
+
+    return summary[:50]
+
+
+def write_summary_file(summary: str, pr_number: str, attempt: int):
+    """Write summary to a file for display in Claude Code."""
+    summary_file = Path.home() / '.claude' / 'ci-auto-fix-summary.txt'
+    try:
+        with open(summary_file, 'w', encoding='utf-8') as f:
+            f.write(f"PR #{pr_number} (試行{attempt}/4): {summary}\n")
+    except:
+        pass
+
+
 def monitor_ci(pr_number: str, repo_root: str, max_retries: int = 4):
     """Monitor CI and auto-fix errors."""
     log_debug(f"\n🔍 CI Auto-Monitor started for PR #{pr_number}")
@@ -338,16 +377,25 @@ def monitor_ci(pr_number: str, repo_root: str, max_retries: int = 4):
         # CI completed
         if status['success']:
             log_debug(f"\n✅ CI PASSED - All checks successful!")
+            # Clear summary file on success
+            summary_file = Path.home() / '.claude' / 'ci-auto-fix-summary.txt'
+            if summary_file.exists():
+                summary_file.unlink()
             return True
 
         # CI failed
         log_debug(f"\n❌ CI FAILED - {len(status['failed_checks'])} check(s) failed")
 
+        # Create and display 50-char summary
+        summary = create_summary_notification(status['failed_checks'], repo_root, attempt + 1)
+        write_summary_file(summary, pr_number, attempt + 1)
+        log_debug(f"\n📢 サマリー: {summary}")
+
         if attempt >= max_retries:
             log_debug(f"\n🛑 Max retries ({max_retries}) reached - stopping auto-fix")
             log_debug(f"\n📋 Failed checks:")
             for check in status['failed_checks']:
-                log_debug(f"   - {check.get('name')}: {check.get('conclusion')}")
+                log_debug(f"   - {check.get('name')}: {check.get('state')}")
             return False
 
         # Try to auto-fix

@@ -102,8 +102,19 @@ def main():
         # Get session stats (for potential future use)
         stats = logger.get_session_stats()
 
+        # Check for CI auto-fix summary
+        summary_file = Path.home() / '.claude' / 'ci-auto-fix-summary.txt'
+        ci_summary = ""
+        if summary_file.exists():
+            try:
+                ci_summary = summary_file.read_text(encoding='utf-8').strip()
+                if ci_summary:
+                    ci_summary = f" | 🔧 CI自動修正: {ci_summary}"
+            except:
+                pass
+
         # Auto-monitor CI after git push
-        additional_context = f"Logged {tool_name} tool usage. Session stats: {stats['total_tokens']} tokens"
+        additional_context = f"Logged {tool_name} tool usage. Session stats: {stats['total_tokens']} tokens{ci_summary}"
         if tool_name == "Bash" and tool_input.get('command'):
             command = tool_input.get('command', '')
             # Detect git push (but not dry-run)
