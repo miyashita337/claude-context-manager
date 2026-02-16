@@ -470,12 +470,12 @@ def test_stop_hook_finalize_session_call(temp_context_dir, monkeypatch, capsys):
             spec.loader.exec_module(stop_module)
             stop_module.main()
 
-                # Verify subprocess was called correctly
-                assert mock_run.called
-                call_args = mock_run.call_args
-                assert "npx" in call_args[0][0]
-                assert "tsx" in call_args[0][0]
-                assert "test-session-stop" in call_args[0][0]
+            # Verify subprocess was called correctly
+            assert mock_run.called
+            call_args = mock_run.call_args
+            assert "npx" in call_args[0][0]
+            assert "tsx" in call_args[0][0]
+            assert "test-session-stop" in call_args[0][0]
 
     # Capture output
     captured = capsys.readouterr()
