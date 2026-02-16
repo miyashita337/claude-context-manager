@@ -58,12 +58,7 @@ def main():
 
         # Handle empty stdin gracefully (CRITICAL: stop.py previously lacked this guard)
         if not stdin_content or not stdin_content.strip():
-            print(json.dumps({
-                "hookSpecificOutput": {
-                    "hookEventName": "Stop",
-                    "status": "skipped"
-                }
-            }))
+            # Exit 0 without JSON output (nothing to process)
             sys.exit(0)
 
         # Sanitize stdin (remove non-JSON prefix from shell profile pollution)
@@ -101,13 +96,9 @@ def main():
         except:
             pass
 
-        # Return success with hookEventName
-        print(json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "Stop",
-                "status": "session_finalized"
-            }
-        }))
+        # Return success (exit 0 without JSON output)
+        # Stop hooks that don't need to control Claude's behavior
+        # should exit 0 without printing JSON
         sys.exit(0)
 
     except Exception as e:
@@ -122,13 +113,8 @@ def main():
         except:
             pass
 
-        # Return error status with hookEventName
-        print(json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "Stop",
-                "status": "error"
-            }
-        }))
+        # Return success even on error (don't block shutdown)
+        # Stop hooks should exit 0 without JSON output when not controlling behavior
         sys.exit(0)  # Don't block shutdown
 
 
