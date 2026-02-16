@@ -159,9 +159,7 @@ ghp_[a-zA-Z0-9]{36}
 API_TOKEN = "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
 PASSWORD = "admin123"
 SECRET_KEY = "django-insecure-1234567890abcdefghijklmnop"
-PRIVATE_KEY = """-----BEGIN RSA PRIVATE KEY-----
-MIIEpAIBAAKCAQEA1234567890abcdefghijklmnop
------END RSA PRIVATE KEY-----"""
+PRIVATE_KEY = """-----BEGIN RSA PRIVATE KEY----- (truncated for security)"""
 ```
 
 #### 検出結果（6件）
