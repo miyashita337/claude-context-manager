@@ -149,14 +149,17 @@ fi
 
                         # Make executable and run in background
                         os.chmod(script_path, 0o755)
+
+                        # Output to log file instead of DEVNULL
+                        log_file = Path.home() / '.claude' / 'ci-watch.log'
                         subprocess.Popen(
                             ['bash', script_path],
                             start_new_session=True,
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL
+                            stdout=open(log_file, 'w'),
+                            stderr=subprocess.STDOUT
                         )
 
-                        additional_context += " | 🚀 Git push detected - CI monitoring will start in 20 seconds"
+                        additional_context += " | 🚀 Git push detected - CI monitoring will start in 20 seconds (log: ~/.claude/ci-watch.log)"
                 except Exception as e:
                     # Don't fail the hook if CI auto-watch fails
                     pass
