@@ -51,7 +51,7 @@ def check_ci_status(pr_number: str, repo_root: str) -> Dict[str, any]:
     try:
         # Get CI checks status
         result = subprocess.run(
-            ['gh', 'pr', 'checks', pr_number, '--json', 'name,status,conclusion'],
+            ['gh', 'pr', 'checks', pr_number, '--json', 'name,state,completedAt'],
             capture_output=True,
             text=True,
             check=False,
@@ -65,15 +65,17 @@ def check_ci_status(pr_number: str, repo_root: str) -> Dict[str, any]:
         if not checks:
             return {'completed': False, 'success': False, 'failed_checks': []}
 
-        # Check if all checks are completed
-        all_completed = all(check.get('status') == 'completed' for check in checks)
+        # Check if all checks are completed (have completedAt timestamp)
+        all_completed = all(check.get('completedAt') is not None for check in checks)
         if not all_completed:
             return {'completed': False, 'success': False, 'failed_checks': []}
 
         # Check if all checks passed
+        # SUCCESS, SKIPPED, CANCELLED are acceptable
+        # FAILURE, ERROR are failures
         failed_checks = [
             check for check in checks
-            if check.get('conclusion') not in ['success', 'skipped']
+            if check.get('state') in ['FAILURE', 'ERROR']
         ]
 
         success = len(failed_checks) == 0
