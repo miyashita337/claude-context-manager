@@ -191,6 +191,138 @@ make startup-check
 
 詳細は [SESSION_STARTUP_CHECKLIST.md](./SESSION_STARTUP_CHECKLIST.md) を参照してください。
 
+## Skills（新機能）
+
+Claude Context Manager には、エラー予防と自動解決のための3つの Claude Code Skills が含まれています。
+
+### 利用可能なSkills
+
+#### 1. `/fact-check` - 公式ドキュメント照合
+
+実装内容が公式ドキュメントと一致しているか自動検証します。
+
+```bash
+# 使用例
+/fact-check "Verify Claude Code hook paths are official"
+/fact-check "Check if .claude/settings.json is the correct hook configuration path"
+```
+
+**特徴**:
+- WebSearch/WebFetchで公式ドキュメント検索
+- 現在の実装と比較
+- 差異を詳細レポート
+
+**いつ使うか**:
+- 新機能実装前
+- 予期しない動作が発生した時
+- 設定パスやフォーマットが不明な時
+
+---
+
+#### 2. `/pre-commit` - コミット前自動チェック
+
+`make pre-git-check`を実行し、エラーを自動解決します。
+
+```bash
+# 使用例
+/pre-commit
+```
+
+**実行内容**:
+1. `make pre-git-check`実行
+2. エラー検出時、PITFALLS.mdを自動検索
+3. 安全な修正を自動適用
+4. 再チェック実行
+
+**自動修正例**:
+- 機密情報検出 → unstage + .gitignoreに追加
+- 不要ファイル検出 → .gitignoreに追加
+- 初期コミットHEADエラー → 正しいコマンド提案
+
+---
+
+#### 3. `/git-workflow` - 安全なGit操作ガイド
+
+Git操作を安全にガイドします（初期コミット対応、force push防止）。
+
+```bash
+# 使用例
+/git-workflow
+```
+
+**保護機能**:
+- 初期コミット検出とHEADエラー防止
+- force push防止（main/master）
+- コミット前セキュリティチェック
+- 段階的ガイダンス
+
+**特に有用なシーン**:
+- 新規リポジトリでの初回コミット
+- main/masterへのpush前
+- gitエラー発生時
+
+---
+
+### PITFALLS.md - エラーパターンデータベース
+
+過去に発生したエラーとその解決策を記録したナレッジベースです。
+
+**含まれるエラー**:
+- `GIT-001`: 初期コミットHEADエラー
+- `GIT-002`: 非公式hookパス
+- `HOOK-001`: hook実行がテストで検出されない
+- `SEC-001`: 機密情報パターン検出
+
+**検索方法**:
+```bash
+# エラーメッセージで検索
+grep "fatal: ambiguous argument" .claude/PITFALLS.md
+
+# エラーIDで検索
+grep "GIT-001" .claude/PITFALLS.md
+
+# タグで検索
+grep "Tags.*security" .claude/PITFALLS.md
+```
+
+**Skills経由の自動検索**:
+- `/pre-commit`: エラー発生時に自動検索・解決提案
+- `/git-workflow`: git関連エラーを自動検索
+
+詳細は [.claude/CLAUDE.md](.claude/CLAUDE.md) の「Skills使用方法」セクションを参照してください。
+
+## AgentTeams - CI自動修正システム
+
+AgentTeamsを有効にすると、`git push`後にCIを自動監視し、失敗時に自動修正を試みます。
+
+### 有効化
+
+`settings.json`に以下を追加:
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}
+```
+
+### 仕組み
+
+1. `git push`を検出すると、PostToolUse hookがCI監視リクエストを作成
+2. ci-monitorエージェントがPRのCIステータスをポーリング（30秒間隔）
+3. CI失敗時、`ci-auto-fixer.py`がPITFALLS.mdを検索し自動修正を適用
+4. 修正をコミット・プッシュし、CIの再実行を待機
+5. 最大4回リトライ後、手動対応が必要な場合はSendMessageで報告
+
+### 手動CI監視
+
+AgentTeamsを使わずにCI監視する場合:
+
+```bash
+make ci-watch PR=<number>
+```
+
 ### CLI Commands (Phase 2)
 
 Future commands for enhanced functionality:
@@ -541,3 +673,4 @@ For issues, questions, or feature requests, please open an issue on GitHub.
 ---
 
 **Current Status**: Phase 1 MVP - Core functionality implemented and working.
+# Test CI monitoring log output

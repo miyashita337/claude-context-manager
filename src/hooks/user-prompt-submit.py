@@ -11,6 +11,46 @@ sys.path.insert(0, str(Path(__file__).parent / 'shared'))
 from logger import SessionLogger
 
 
+def sanitize_stdin(stdin_content: str, hook_name: str) -> str:
+    """Remove non-JSON text from stdin before the first '{' or '['.
+
+    Args:
+        stdin_content: Raw stdin content
+        hook_name: Name of the hook (for logging)
+
+    Returns:
+        Sanitized stdin content with non-JSON prefix removed
+    """
+    if not stdin_content:
+        return stdin_content
+
+    # Find first JSON character
+    start_idx = -1
+    for i, char in enumerate(stdin_content):
+        if char in ('{', '['):
+            start_idx = i
+            break
+
+    # No JSON found, return as-is (will fail JSON parse, but that's expected)
+    if start_idx == -1:
+        return stdin_content
+
+    # Non-JSON text found before JSON - sanitize and log
+    if start_idx > 0:
+        debug_log = Path.home() / '.claude' / 'hook-debug.log'
+        try:
+            with open(debug_log, 'a', encoding='utf-8') as f:
+                f.write(f"\n=== Stdin Sanitization ({hook_name}) ===\n")
+                f.write(f"Removed {start_idx} bytes of non-JSON prefix\n")
+                f.write(f"Prefix content: {repr(stdin_content[:start_idx])}\n")
+        except:
+            pass
+
+        return stdin_content[start_idx:]
+
+    return stdin_content
+
+
 def main():
     """Main hook entry point."""
     try:
@@ -19,14 +59,16 @@ def main():
 
         # Handle empty stdin gracefully
         if not stdin_content or not stdin_content.strip():
-            output = {
+            print(json.dumps({
                 "hookSpecificOutput": {
-                    "status": "skipped",
-                    "reason": "empty stdin"
+                    "hookEventName": "UserPromptSubmit",
+                    "status": "skipped"
                 }
-            }
-            print(json.dumps(output))
+            }))
             sys.exit(0)
+
+        # Sanitize stdin (remove non-JSON prefix from shell profile pollution)
+        stdin_content = sanitize_stdin(stdin_content, "UserPromptSubmit")
 
         # Parse JSON
         input_data = json.loads(stdin_content)
@@ -39,19 +81,18 @@ def main():
         logger = SessionLogger(session_id)
         logger.add_entry('user', user_prompt)
 
-        # Get session stats for output
+        # Get session stats (for potential future use)
         stats = logger.get_session_stats()
 
-        # Return hook output
-        output = {
+        # Return success with hookEventName
+        print(json.dumps({
             "hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit",
                 "status": "logged",
-                "session_id": session_id,
-                "total_tokens": stats['total_tokens']
+                "additionalContext": f"Logged user prompt. Session stats: {stats['total_tokens']} tokens"
             }
-        }
-
-        print(json.dumps(output))
+        }))
+        sys.exit(0)
 
     except Exception as e:
         # Log error but don't fail the hook
@@ -66,14 +107,13 @@ def main():
         except:
             pass
 
-        # Return error status but to stdout (not stderr) to avoid Claude error display
-        error_output = {
+        # Return error status with hookEventName
+        print(json.dumps({
             "hookSpecificOutput": {
-                "status": "error",
-                "error": str(e)
+                "hookEventName": "UserPromptSubmit",
+                "status": "error"
             }
-        }
-        print(json.dumps(error_output))
+        }))
         sys.exit(0)  # Don't block user interaction
 
 

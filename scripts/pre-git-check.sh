@@ -117,6 +117,14 @@ if [ -d .git ]; then
 
         # APIキーパターン検出
         while IFS= read -r file; do
+            # 除外: テストファイル、ドキュメントファイル（例文を含むため）
+            if [[ "$file" == tests/* ]] || \
+               [[ "$file" == *.md ]] || \
+               [[ "$file" == .claude/PITFALLS.md ]] || \
+               [[ "$file" == .claude/skills/* ]]; then
+                continue
+            fi
+
             if [ -f "$file" ]; then
                 # OpenAI API keys
                 if grep -qE 'sk-proj-[a-zA-Z0-9_-]{20,}' "$file" 2>/dev/null; then

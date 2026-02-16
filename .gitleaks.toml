@@ -1,0 +1,14 @@
+# Gitleaks configuration
+# False positive exclusions for CI security scans
+
+title = "claude-context-manager gitleaks config"
+
+[allowlist]
+  description = "Allow known false positives"
+
+  # .secrets.baseline contains only hashed values (not actual secrets)
+  # VERIFICATION_REPORT.md contains example/dummy keys for documentation
+  paths = [
+    '''\.secrets\.baseline$''',
+    '''VERIFICATION_REPORT\.md$''',
+  ]

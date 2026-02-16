@@ -80,3 +80,19 @@ PRINCIPAL.md
 # - src/
 # - tests/
 # These directories contain project source code and should be tracked
+credentials.json
+token.json
+
+# Google Slides script
+venv_slides/
+credentials*.json
+token.json
+
+# SpecStory and verification artifacts
+.specstory/
+spec_story/
+detect_secrets/
+
+# Google Slides artifacts
+create_google_slide.py
+credentials.json.old

@@ -10,11 +10,62 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / 'shared'))
 
 
+def sanitize_stdin(stdin_content: str, hook_name: str) -> str:
+    """Remove non-JSON text from stdin before the first '{' or '['.
+
+    Args:
+        stdin_content: Raw stdin content
+        hook_name: Name of the hook (for logging)
+
+    Returns:
+        Sanitized stdin content with non-JSON prefix removed
+    """
+    if not stdin_content:
+        return stdin_content
+
+    # Find first JSON character
+    start_idx = -1
+    for i, char in enumerate(stdin_content):
+        if char in ('{', '['):
+            start_idx = i
+            break
+
+    # No JSON found, return as-is (will fail JSON parse, but that's expected)
+    if start_idx == -1:
+        return stdin_content
+
+    # Non-JSON text found before JSON - sanitize and log
+    if start_idx > 0:
+        debug_log = Path.home() / '.claude' / 'hook-debug.log'
+        try:
+            with open(debug_log, 'a', encoding='utf-8') as f:
+                f.write(f"\n=== Stdin Sanitization ({hook_name}) ===\n")
+                f.write(f"Removed {start_idx} bytes of non-JSON prefix\n")
+                f.write(f"Prefix content: {repr(stdin_content[:start_idx])}\n")
+        except:
+            pass
+
+        return stdin_content[start_idx:]
+
+    return stdin_content
+
+
 def main():
     """Main hook entry point."""
     try:
         # Read hook input from stdin
-        input_data = json.load(sys.stdin)
+        stdin_content = sys.stdin.read()
+
+        # Handle empty stdin gracefully (CRITICAL: stop.py previously lacked this guard)
+        if not stdin_content or not stdin_content.strip():
+            # Exit 0 without JSON output (nothing to process)
+            sys.exit(0)
+
+        # Sanitize stdin (remove non-JSON prefix from shell profile pollution)
+        stdin_content = sanitize_stdin(stdin_content, "Stop")
+
+        # Parse JSON
+        input_data = json.loads(stdin_content)
 
         # Extract session ID
         session_id = input_data.get('session_id', 'unknown')
@@ -45,10 +96,10 @@ def main():
         except:
             pass
 
-        # Stop hook should return empty or minimal JSON (no hookSpecificOutput for Stop hooks)
-        # Just return empty object to indicate success
-        output = {}
-        print(json.dumps(output))
+        # Return success (exit 0 without JSON output)
+        # Stop hooks that don't need to control Claude's behavior
+        # should exit 0 without printing JSON
+        sys.exit(0)
 
     except Exception as e:
         # Log error but don't fail the hook
@@ -62,8 +113,8 @@ def main():
         except:
             pass
 
-        # Return empty object on error (stdout, not stderr)
-        print(json.dumps({}))
+        # Return success even on error (don't block shutdown)
+        # Stop hooks should exit 0 without JSON output when not controlling behavior
         sys.exit(0)  # Don't block shutdown
 
 

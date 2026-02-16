@@ -73,54 +73,168 @@ git commit          # pre-commitフックが自動実行（P1実装後）
 ---
 
 ## テスト
-
-### 実行方法
-```bash
-make test-all       # 全テスト
-make test-python    # Pythonのみ
-make test-ts        # TypeScriptのみ
-```
-
-### 期待結果
-- Python: 12/13 PASS（stopフックは既知の問題）
-- TypeScript: 全PASS
+`make test-all` でテスト実行（詳細は Makefile 参照）
 
 ---
 
 ## ドキュメント管理
-
-### 役割分担
-| ファイル | 役割 | 更新タイミング |
-|---------|------|---------------|
-| README.md | プロジェクト概要、セットアップ | 機能追加時 |
-| SESSION_STARTUP_CHECKLIST.md | セッション起動時の手動チェック | 手順変更時 |
-| IMPROVEMENT_PLAN.md | 改善タスク管理 | タスク完了時 |
-| CLAUDE.md（これ） | 開発ガイドライン | ワークフロー変更時 |
-
-### 整理原則
-- **役割が明確**であること
-- **重複を削除**（ソースコードで確認できる内容は削除）
-- **簡潔に保つ**（無駄を省く）
+各ドキュメントの役割は README.md を参照。重複を避け、簡潔に保つ。
 
 ---
 
-## AgentTeam活用（このプロジェクト）
+## Skills使用方法（新機能）
 
-### 利用実績
-- セキュリティエンジニア: 機密情報検出、多層防御戦略
-- DevOpsエンジニア: Git操作改善、CI/CD統合
-- QAエンジニア: 品質ゲート、テスト戦略
-- PM: プロセス改善、プロンプト最適化
-- シニアエンジニア: アーキテクチャレビュー
+### 利用可能なSkills
 
-### 次回活用シーン
-- 大規模リファクタリング前
-- 新機能設計時
-- セキュリティ監査
-- 定期的な振り返り（タスク完了時 + 肥大化検知時）
+#### `/fact-check` - 公式ドキュメント照合
+**用途**: 実装内容が公式ドキュメントと一致しているか検証
+
+```bash
+# 使用例
+/fact-check "Verify Claude Code hook paths are official"
+/fact-check "Check if .claude/settings.json is the correct hook configuration path"
+```
+
+**特徴**:
+- WebSearch/WebFetchで公式ドキュメント検索
+- 現在の実装と比較
+- 差異を詳細レポート
+
+**いつ使うか**:
+- 新機能実装前
+- 予期しない動作が発生した時
+- 設定パスやフォーマットが不明な時
+
+---
+
+#### `/pre-commit` - コミット前自動チェック
+**用途**: `make pre-git-check`を実行し、エラーを自動解決
+
+```bash
+# 使用例
+/pre-commit
+```
+
+**実行内容**:
+1. `make pre-git-check`実行
+2. エラー検出時、PITFALLS.mdを自動検索
+3. 安全な修正を自動適用
+4. 再チェック実行
+
+**自動修正例**:
+- 機密情報検出 → unstage + .gitignoreに追加
+- 不要ファイル検出 → .gitignoreに追加
+- 初期コミットHEADエラー → 正しいコマンド提案
+
+---
+
+#### `/git-workflow` - 安全なGit操作ガイド
+**用途**: Git操作を安全にガイド（初期コミット対応、force push防止）
+
+```bash
+# 使用例
+/git-workflow
+```
+
+**保護機能**:
+- 初期コミット検出とHEADエラー防止
+- force push防止（main/master）
+- コミット前セキュリティチェック
+- 段階的ガイダンス
+
+**特に有用なシーン**:
+- 新規リポジトリでの初回コミット
+- main/masterへのpush前
+- gitエラー発生時
+
+---
+
+## CI自動監視（AgentTeams）
+
+### 概要
+`git push`後、PostToolUse hookがCI監視リクエストファイル(`~/.claude/ci-monitoring-request.json`)を作成します。AgentTeamsが有効な場合、ci-monitorエージェントがこれを検知し自動でCI監視・修正を行います。
+
+### 使い方
+通常の`git push`を実行するだけで自動的に動作します。特別な操作は不要です。
+
+### 動作フロー
+1. `git push` → hookがPR番号を取得しリクエストファイル作成
+2. ci-monitorエージェントが30秒間隔でCIステータスをポーリング
+3. CI失敗時 → PITFALLS.md検索 → 自動修正（lint、機密情報除外等）
+4. 修正をコミット・プッシュ → CI再実行を待機
+5. 最大4回リトライ、解決不可の場合はSendMessageで報告
+
+### 手動でCI監視する場合
+```bash
+make ci-watch PR=<number>
+```
+
+### ログ確認
+```bash
+# CI監視ログ
+cat ~/.claude/ci-watch.log
+
+# 最新のサマリー
+cat ~/.claude/ci-auto-fix-summary.txt
+```
+
+---
+
+## 調査プロセスチェックリスト（BLOCKING REQUIREMENT）
+AI自身が確証バイアスを引き起こす可能性があるので、その防御策
+
+### Phase 1: 証拠の収集
+- [ ] 直接観察（ユーザー報告、実行結果）> 間接証拠（ログ）> 推測
+- [ ] 矛盾する証拠を無視していないか？
+- [ ] 「証拠がない ≠ 問題ない」を認識しているか？
+
+### Phase 2: 仮説の検証
+- [ ] 対立仮説を2-3個立てたか？
+- [ ] **反証を探したか？**（失敗例も調査）
+- [ ] 外部検証（公式ドキュメント、実行テスト）を行ったか？
+- [ ] **エラーを最小ケースで再現できるか？**（デバッグ実行、単体テスト）
+- [ ] **仮説を実験で検証したか？**（コードを実際に実行して動作確認）
+
+### Phase 3: 結論の検証
+- [ ] 全ての証拠を説明できるか？
+- [ ] 反証を最後にもう一度探したか？
+- [ ] 再現可能な形で表現しているか？
+
+**詳細**: プランファイルまたは過去のセッション transcript を参照
+
+**指示方法**:
+- 「調査プロセスチェックリストを使って調査してください」
+- 「確証バイアスを避けて、科学的に調査してください」
+
+---
+
+### PITFALLS.md検索
+- 手動: `grep "エラーメッセージ" .claude/PITFALLS.md`
+- 自動: `/pre-commit`, `/git-workflow` が自動検索
+
+---
+
+### エラー解決フロー
+1. エラー発生 → `/pre-commit` または `/git-workflow` 実行
+2. Skills が PITFALLS.md を自動検索・解決提案
+3. 新規エラーは `/fact-check` で調査 → PITFALLS.md に追加
+
+---
+
+### PITFALLS.md エントリ追加
+
+新規エラー発見時：
+1. エラーIDを割り当て（GIT-003, HOOK-002, etc.）
+2. PITFALLS.md の既存フォーマットに従ってエントリ追加：
+   - Error Signature, Context, Root Cause, Solution, Prevention
+   - Tags, Severity, Date Added
+3. メタデータ更新（Total Entries カウント）
+
+詳細: `.claude/PITFALLS.md` の既存エントリを参照。
 
 ---
 
 ## 参照
 - [IMPROVEMENT_PLAN.md](.claude/IMPROVEMENT_PLAN.md) - 実装計画と進捗
 - [SESSION_STARTUP_CHECKLIST.md](../SESSION_STARTUP_CHECKLIST.md) - 起動時チェック
+- [PITFALLS.md](.claude/PITFALLS.md) - エラーパターンデータベース
