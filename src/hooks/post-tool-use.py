@@ -124,42 +124,50 @@ def main():
                     if git_root_result.returncode == 0:
                         repo_root = git_root_result.stdout.strip()
 
-                        # Create background script for CI monitoring
-                        ci_watch_script = f'''#!/bin/bash
-sleep 20
-cd "{repo_root}"
-BRANCH=$(git branch --show-current 2>/dev/null)
-if [ -z "$BRANCH" ]; then
-    exit 0
-fi
-PR_NUM=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null)
-if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
-    echo ""
-    echo "🔍 Auto-monitoring PR #$PR_NUM CI status (triggered by git push)..."
-    echo ""
-    make ci-watch PR=$PR_NUM
-fi
-'''
-
-                        # Write to temporary script file
-                        import tempfile
-                        with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
-                            f.write(ci_watch_script)
-                            script_path = f.name
-
-                        # Make executable and run in background
-                        os.chmod(script_path, 0o755)
-
-                        # Output to log file instead of DEVNULL
-                        log_file = Path.home() / '.claude' / 'ci-watch.log'
-                        subprocess.Popen(
-                            ['bash', script_path],
-                            start_new_session=True,
-                            stdout=open(log_file, 'w'),
-                            stderr=subprocess.STDOUT
+                        # Get current branch
+                        branch_result = subprocess.run(
+                            ['git', 'branch', '--show-current'],
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                            cwd=repo_root
                         )
 
-                        additional_context += " | 🚀 Git push detected - CI monitoring will start in 20 seconds (log: ~/.claude/ci-watch.log)"
+                        if branch_result.returncode == 0:
+                            branch = branch_result.stdout.strip()
+
+                            # Get PR number
+                            pr_result = subprocess.run(
+                                ['gh', 'pr', 'list', '--head', branch, '--json', 'number', '--jq', '.[0].number'],
+                                capture_output=True,
+                                text=True,
+                                check=False,
+                                cwd=repo_root
+                            )
+
+                            if pr_result.returncode == 0 and pr_result.stdout.strip():
+                                pr_num = pr_result.stdout.strip()
+                                if pr_num != 'null':
+                                    # Launch CI auto-fixer in background
+                                    log_file = Path.home() / '.claude' / 'ci-watch.log'
+                                    ci_fixer_path = Path(__file__).parent / 'ci-auto-fixer.py'
+
+                                    # Clear log file
+                                    with open(log_file, 'w') as f:
+                                        f.write(f"🔍 CI Auto-Monitor starting for PR #{pr_num}...\n")
+                                        f.write(f"   Branch: {branch}\n")
+                                        f.write(f"   Repo: {repo_root}\n")
+                                        f.write(f"   Max retries: 4\n\n")
+
+                                    # Start CI auto-fixer in background (wait 20 seconds first)
+                                    subprocess.Popen(
+                                        ['bash', '-c', f'sleep 20 && python3 "{ci_fixer_path}" "{pr_num}" "{repo_root}" 4'],
+                                        start_new_session=True,
+                                        stdout=open(log_file, 'a'),
+                                        stderr=subprocess.STDOUT
+                                    )
+
+                                    additional_context += f" | 🚀 CI auto-monitor starting in 20s for PR #{pr_num} (log: ~/.claude/ci-watch.log)"
                 except Exception as e:
                     # Don't fail the hook if CI auto-watch fails
                     pass
