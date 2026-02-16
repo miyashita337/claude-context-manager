@@ -112,38 +112,205 @@ def search_pitfalls(error_signature: str, repo_root: str) -> Optional[str]:
     return None
 
 
-def apply_auto_fix(failed_checks: List[Dict], repo_root: str, attempt: int) -> bool:
-    """Apply automatic fixes for failed CI checks.
+def get_check_details(pr_number: str, check_name: str, repo_root: str) -> Optional[str]:
+    """Get detailed error message from a failed check."""
+    try:
+        result = subprocess.run(
+            ['gh', 'pr', 'checks', pr_number, '--json', 'name,detailsUrl'],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=repo_root
+        )
+        if result.returncode == 0:
+            checks = json.loads(result.stdout)
+            for check in checks:
+                if check.get('name') == check_name:
+                    # Get more details using gh run view
+                    return None  # Will implement if needed
+    except:
+        pass
+    return None
+
+
+def apply_pre_commit_fixes(repo_root: str) -> bool:
+    """Apply fixes for pre-commit hook failures.
 
     Returns:
         True if fixes were applied, False otherwise
     """
-    log_debug(f"\n🔧 Attempt {attempt}: Analyzing failures...")
+    log_debug(f"\n  🔍 Checking for unstaged secrets...")
 
-    # For now, just log what we would do
-    # In a full implementation, this would:
-    # 1. Analyze error messages
-    # 2. Search PITFALLS.md
-    # 3. Apply safe fixes
-    # 4. Commit and push
+    # Run pre-commit hook to identify issues
+    result = subprocess.run(
+        ['bash', '-c', 'git diff --cached --name-only 2>/dev/null || echo ""'],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=repo_root
+    )
+
+    if result.returncode != 0:
+        return False
+
+    staged_files = result.stdout.strip().split('\n') if result.stdout.strip() else []
+    if not staged_files:
+        log_debug(f"  ℹ️  No staged files to check")
+        return False
+
+    # Check for .env files
+    env_files = [f for f in staged_files if f.endswith('.env') or '.env.' in f]
+    if env_files:
+        log_debug(f"\n  🔧 Unstaging .env files: {env_files}")
+        for file in env_files:
+            subprocess.run(
+                ['git', 'rm', '--cached', file],
+                capture_output=True,
+                cwd=repo_root
+            )
+
+        # Add to .gitignore if not already there
+        gitignore = Path(repo_root) / '.gitignore'
+        if gitignore.exists():
+            content = gitignore.read_text()
+            for file in env_files:
+                if file not in content:
+                    with open(gitignore, 'a') as f:
+                        f.write(f"\n{file}\n")
+                    log_debug(f"  ✅ Added {file} to .gitignore")
+
+        return True
+
+    return False
+
+
+def apply_lint_fixes(repo_root: str) -> bool:
+    """Apply automatic lint fixes using ruff.
+
+    Returns:
+        True if fixes were applied, False otherwise
+    """
+    log_debug(f"\n  🔍 Running ruff --fix...")
+
+    result = subprocess.run(
+        ['ruff', 'check', '--fix', '.'],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=repo_root
+    )
+
+    if result.returncode == 0 or 'fixed' in result.stdout.lower():
+        log_debug(f"  ✅ Ruff auto-fix applied")
+        return True
+
+    return False
+
+
+def apply_auto_fix(failed_checks: List[Dict], repo_root: str, attempt: int) -> bool:
+    """Apply automatic fixes for failed CI checks.
+
+    Following CLAUDE.md investigation checklist:
+    1. Collect evidence (check error messages)
+    2. Form hypotheses (search PITFALLS.md)
+    3. Verify with experiments (apply safe fixes only)
+
+    Returns:
+        True if fixes were applied and committed, False otherwise
+    """
+    log_debug(f"\n🔧 Attempt {attempt}: Analyzing failures...")
+    log_debug(f"   Following CLAUDE.md investigation checklist:")
+    log_debug(f"   1. Evidence: Failed checks detected")
+    log_debug(f"   2. Hypotheses: Searching PITFALLS.md for solutions")
+    log_debug(f"   3. Verification: Applying safe fixes only\n")
+
+    fixes_applied = False
+    fix_descriptions = []
 
     for check in failed_checks:
         name = check.get('name', 'Unknown')
         conclusion = check.get('conclusion', 'Unknown')
         log_debug(f"  ❌ {name}: {conclusion}")
 
-        # Search for solutions
+        # Phase 1: Search for solutions in PITFALLS.md
         solution = search_pitfalls(name, repo_root)
         if solution:
             log_debug(f"  💡 Found solution in PITFALLS.md")
-            log_debug(f"     {solution[:100]}...")
-        else:
-            log_debug(f"  ⚠️  No solution found in PITFALLS.md")
+            log_debug(f"     {solution[:200]}...")
 
-    # For safety, don't actually apply fixes in this initial implementation
-    # User needs to manually review and fix
-    log_debug(f"\n⚠️  Auto-fix not yet implemented - manual intervention required")
-    return False
+        # Phase 2: Apply safe fixes based on check type
+        if 'pre-commit' in name.lower() or 'security' in name.lower():
+            log_debug(f"\n  🔧 Applying pre-commit fixes...")
+            if apply_pre_commit_fixes(repo_root):
+                fixes_applied = True
+                fix_descriptions.append("Unstaged secrets and updated .gitignore")
+
+        elif 'lint' in name.lower() or 'ruff' in name.lower():
+            log_debug(f"\n  🔧 Applying lint fixes...")
+            if apply_lint_fixes(repo_root):
+                fixes_applied = True
+                fix_descriptions.append("Applied ruff auto-fix")
+
+        else:
+            log_debug(f"  ⚠️  No auto-fix available for this check type")
+
+    if not fixes_applied:
+        log_debug(f"\n⚠️  No fixes could be applied automatically")
+        return False
+
+    # Phase 3: Commit and push fixes
+    log_debug(f"\n📝 Committing fixes...")
+
+    # Stage all changes
+    subprocess.run(
+        ['git', 'add', '-A'],
+        capture_output=True,
+        cwd=repo_root
+    )
+
+    # Create commit message
+    commit_msg = f"""fix: auto-fix CI failures (attempt {attempt})
+
+Applied fixes:
+{chr(10).join('- ' + desc for desc in fix_descriptions)}
+
+Auto-fixed by CI auto-monitor following CLAUDE.md investigation checklist.
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+"""
+
+    # Commit
+    result = subprocess.run(
+        ['git', 'commit', '-m', commit_msg],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=repo_root
+    )
+
+    if result.returncode != 0:
+        log_debug(f"  ❌ Commit failed: {result.stderr}")
+        return False
+
+    log_debug(f"  ✅ Committed fixes")
+
+    # Push
+    result = subprocess.run(
+        ['git', 'push'],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=repo_root
+    )
+
+    if result.returncode != 0:
+        log_debug(f"  ❌ Push failed: {result.stderr}")
+        return False
+
+    log_debug(f"  ✅ Pushed fixes to remote")
+    log_debug(f"\n✨ Auto-fix cycle complete - waiting for CI to re-run...")
+
+    return True
 
 
 def monitor_ci(pr_number: str, repo_root: str, max_retries: int = 4):
