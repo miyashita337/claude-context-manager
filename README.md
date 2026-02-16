@@ -291,6 +291,38 @@ grep "Tags.*security" .claude/PITFALLS.md
 
 詳細は [.claude/CLAUDE.md](.claude/CLAUDE.md) の「Skills使用方法」セクションを参照してください。
 
+## AgentTeams - CI自動修正システム
+
+AgentTeamsを有効にすると、`git push`後にCIを自動監視し、失敗時に自動修正を試みます。
+
+### 有効化
+
+`settings.json`に以下を追加:
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}
+```
+
+### 仕組み
+
+1. `git push`を検出すると、PostToolUse hookがCI監視リクエストを作成
+2. ci-monitorエージェントがPRのCIステータスをポーリング（30秒間隔）
+3. CI失敗時、`ci-auto-fixer.py`がPITFALLS.mdを検索し自動修正を適用
+4. 修正をコミット・プッシュし、CIの再実行を待機
+5. 最大4回リトライ後、手動対応が必要な場合はSendMessageで報告
+
+### 手動CI監視
+
+AgentTeamsを使わずにCI監視する場合:
+
+```bash
+make ci-watch PR=<number>
+```
+
 ### CLI Commands (Phase 2)
 
 Future commands for enhanced functionality:

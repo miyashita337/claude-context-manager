@@ -149,6 +149,37 @@ git commit          # pre-commitフックが自動実行（P1実装後）
 
 ---
 
+## CI自動監視（AgentTeams）
+
+### 概要
+`git push`後、PostToolUse hookがCI監視リクエストファイル(`~/.claude/ci-monitoring-request.json`)を作成します。AgentTeamsが有効な場合、ci-monitorエージェントがこれを検知し自動でCI監視・修正を行います。
+
+### 使い方
+通常の`git push`を実行するだけで自動的に動作します。特別な操作は不要です。
+
+### 動作フロー
+1. `git push` → hookがPR番号を取得しリクエストファイル作成
+2. ci-monitorエージェントが30秒間隔でCIステータスをポーリング
+3. CI失敗時 → PITFALLS.md検索 → 自動修正（lint、機密情報除外等）
+4. 修正をコミット・プッシュ → CI再実行を待機
+5. 最大4回リトライ、解決不可の場合はSendMessageで報告
+
+### 手動でCI監視する場合
+```bash
+make ci-watch PR=<number>
+```
+
+### ログ確認
+```bash
+# CI監視ログ
+cat ~/.claude/ci-watch.log
+
+# 最新のサマリー
+cat ~/.claude/ci-auto-fix-summary.txt
+```
+
+---
+
 ## 調査プロセスチェックリスト（BLOCKING REQUIREMENT）
 AI自身が確証バイアスを引き起こす可能性があるので、その防御策
 
