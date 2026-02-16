@@ -544,7 +544,9 @@ class TestStopHookIntegration:
             mock_stdin.read.return_value = json.dumps({"session_id": session_id})
             with patch("sys.stdin", mock_stdin):
                 spec.loader.exec_module(stop_module)
-                stop_module.main()
+                with pytest.raises(SystemExit) as exc_info:
+                    stop_module.main()
+                assert exc_info.value.code == 0
 
             # Verify subprocess.run was called
             assert mock_run.called, "Stop hook must call subprocess.run"

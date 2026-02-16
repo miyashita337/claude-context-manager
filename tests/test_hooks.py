@@ -468,7 +468,9 @@ def test_stop_hook_finalize_session_call(temp_context_dir, monkeypatch, capsys):
     with patch("sys.stdin", mock_stdin):
         with patch("subprocess.run", return_value=mock_result) as mock_run:
             spec.loader.exec_module(stop_module)
-            stop_module.main()
+            with pytest.raises(SystemExit) as exc_info:
+                stop_module.main()
+            assert exc_info.value.code == 0
 
             # Verify subprocess was called correctly
             assert mock_run.called
@@ -480,12 +482,10 @@ def test_stop_hook_finalize_session_call(temp_context_dir, monkeypatch, capsys):
     # Capture output
     captured = capsys.readouterr()
 
-    # Stop hook returns empty object (no hookSpecificOutput)
-    # See src/hooks/stop.py:48-51
+    # Stop hook outputs JSON with hookSpecificOutput
     if captured.out.strip():
         output = json.loads(captured.out)
-        # Stop hooks should return empty object
-        assert output == {} or "hookSpecificOutput" not in output
+        assert "hookSpecificOutput" in output
 
 
 def test_error_handling_invalid_json(temp_context_dir, capsys):
