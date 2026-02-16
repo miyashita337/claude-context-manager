@@ -162,6 +162,17 @@ def main():
                                         with open(signal_file, 'w', encoding='utf-8') as f:
                                             json.dump(signal_data, f, indent=2)
                                         additional_context += f" | 🚀 CI監視リクエスト送信 - PR #{pr_num} (エージェントが自動処理)"
+
+                                        # Auto-start ci-monitor agent in background
+                                        import subprocess
+                                        subprocess.Popen(
+                                            ["make", "ci-watch", f"PR={pr_num}"],
+                                            cwd=repo_root,
+                                            stdout=subprocess.DEVNULL,
+                                            stderr=subprocess.DEVNULL,
+                                            start_new_session=True
+                                        )
+                                        additional_context += f" | 🤖 ci-monitorエージェント起動"
                                     except Exception as e:
                                         additional_context += f" | ⚠️ CI監視リクエスト失敗: {str(e)}"
                 except Exception as e:
