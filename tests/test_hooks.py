@@ -463,11 +463,12 @@ def test_stop_hook_finalize_session_call(temp_context_dir, monkeypatch, capsys):
     mock_result.stdout = "Session finalized successfully"
     mock_result.stderr = ""
 
-    with patch("sys.stdin", MagicMock()):
-        with patch("json.load", return_value=input_data):
-            with patch("subprocess.run", return_value=mock_result) as mock_run:
-                spec.loader.exec_module(stop_module)
-                stop_module.main()
+    mock_stdin = MagicMock()
+    mock_stdin.read.return_value = json.dumps(input_data)
+    with patch("sys.stdin", mock_stdin):
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            spec.loader.exec_module(stop_module)
+            stop_module.main()
 
                 # Verify subprocess was called correctly
                 assert mock_run.called
