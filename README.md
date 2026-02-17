@@ -193,7 +193,7 @@ make startup-check
 
 ## Skills（新機能）
 
-Claude Context Manager には、エラー予防と自動解決のための3つの Claude Code Skills が含まれています。
+Claude Context Manager には、エラー予防・自動解決・セッション分析のための4つの Claude Code Skills が含まれています。
 
 ### 利用可能なSkills
 
@@ -263,6 +263,34 @@ Git操作を安全にガイドします（初期コミット対応、force push�
 
 ---
 
+#### 4. `/ccusage` - トークン使用量・コスト分析
+
+Claude Codeセッションのトークン使用量とコストを分析し、最適化の根拠となるエビデンスを提供します。
+
+```bash
+# 使用例
+/ccusage                          # 今日のサマリー
+/ccusage daily --since 20260201   # 日次内訳
+/ccusage session                  # セッション別詳細
+/ccusage monthly --breakdown      # モデル別コスト内訳
+```
+
+**分析機能**:
+- 日次/月次/セッション別トークン使用量レポート
+- 高コストセッション検出（閾値: $5）
+- Kitchen-Sink検出（閾値: 167K tokens）
+- SpecStory連携でcompactイベント検出
+- JSON + jq統合で柔軟なデータ抽出
+
+**いつ使うか**:
+- コストが高くなっていると感じた時
+- どのセッション/タスクが重いかを調査したい時
+- 代替ソリューション検討のエビデンスが必要な時
+
+> **注意**: `ccusage`（Claude Code用）を使用。`@ccusage/codex`（Codex CLI用）は別物。
+
+---
+
 ### PITFALLS.md - エラーパターンデータベース
 
 過去に発生したエラーとその解決策を記録したナレッジベースです。
@@ -271,7 +299,12 @@ Git操作を安全にガイドします（初期コミット対応、force push�
 - `GIT-001`: 初期コミットHEADエラー
 - `GIT-002`: 非公式hookパス
 - `HOOK-001`: hook実行がテストで検出されない
+- `HOOK-002`: UserPromptSubmit JSONパースエラー
+- `HOOK-003`: stop.py 空stdin未ガード
 - `SEC-001`: 機密情報パターン検出
+- `CCUSAGE-001`: 誤パッケージ名（`@ccusage/codex` vs `ccusage`）
+- `CCUSAGE-002`: 日付フォーマット不正（`YYYYMMDD`が必要）
+- `CCUSAGE-003`: jq未インストール
 
 **検索方法**:
 ```bash

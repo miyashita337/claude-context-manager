@@ -104,7 +104,7 @@ class TestPitfallsEntries:
 
             # Check category is valid
             category = error_id.split("-")[0]
-            valid_categories = ["GIT", "HOOK", "SEC", "API", "BUILD"]
+            valid_categories = ["GIT", "HOOK", "SEC", "API", "BUILD", "CCUSAGE"]
             assert category in valid_categories, \
                 f"Invalid category in {error_id}: {category}"
 
