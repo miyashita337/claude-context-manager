@@ -1,7 +1,7 @@
 # Claude Context Manager - Makefile
 # 便利なショートカットコマンド集
 
-.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch ccusage-report
+.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch ccusage-report analytics analytics-update
 
 # デフォルトターゲット: ヘルプを表示
 help:
@@ -25,6 +25,8 @@ help:
 	@echo ""
 	@echo "📊 分析:"
 	@echo "  make ccusage-report   - Claude Codeトークン使用量レポート（今日）"
+	@echo "  make analytics        - Analytics ダッシュボードを生成・起動"
+	@echo "  make analytics-update - Analytics データを更新（ブラウザは開かない）"
 	@echo ""
 	@echo "🔄 CI/CD:"
 	@echo "  make ci-watch PR=<n>  - PR #nのCI監視（自動リトライ）"
@@ -200,6 +202,25 @@ ci-watch:
 			exit 0; \
 		fi; \
 	done
+
+# Analytics ダッシュボード生成 + ブラウザ起動
+analytics:
+	@echo "📊 Generating analytics data..."
+	@python3 .claude/analytics/engine.py \
+		--sessions 10 \
+		--output .claude/analytics/dashboard/analytics.json
+	@echo "🌐 Opening dashboard..."
+	@open .claude/analytics/dashboard/index.html 2>/dev/null || \
+		xdg-open .claude/analytics/dashboard/index.html 2>/dev/null || \
+		echo "Open: .claude/analytics/dashboard/index.html"
+
+# Analytics データのみ更新（ブラウザは開かない）
+analytics-update:
+	@echo "📊 Updating analytics data..."
+	@python3 .claude/analytics/engine.py \
+		--sessions 10 \
+		--output .claude/analytics/dashboard/analytics.json
+	@echo "✅ Done. Open .claude/analytics/dashboard/index.html to view."
 
 # ccusageトークン使用量レポート
 ccusage-report:

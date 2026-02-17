@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Code Analytics</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #1e1e2e; --surface: #2a2a3e; --border: #3a3a5c;
+    --text: #cdd6f4; --muted: #6c7086; --accent: #89b4fa;
+    --red: #f38ba8; --yellow: #f9e2af; --green: #a6e3a1;
+    --orange: #fab387;
+  }
+  body { background: var(--bg); color: var(--text); font: 14px/1.5 'Segoe UI', system-ui, sans-serif; }
+
+  /* ── Layout ── */
+  header { display:flex; align-items:center; justify-content:space-between;
+    padding:12px 20px; background:var(--surface); border-bottom:1px solid var(--border);
+    position:sticky; top:0; z-index:100; }
+  header h1 { font-size:16px; font-weight:600; color:var(--accent); }
+  .tab-bar { display:flex; gap:4px; }
+  .tab { padding:6px 14px; border:1px solid var(--border); border-radius:6px;
+    cursor:pointer; background:transparent; color:var(--muted); font-size:13px;
+    transition:all .15s; }
+  .tab.active, .tab:hover { background:var(--accent); color:#1e1e2e; border-color:var(--accent); }
+  .gear-btn { background:none; border:1px solid var(--border); border-radius:6px;
+    padding:6px 10px; cursor:pointer; color:var(--muted); font-size:16px;
+    transition:all .15s; }
+  .gear-btn:hover { color:var(--text); border-color:var(--text); }
+
+  main { padding:20px; max-width:1400px; margin:0 auto; }
+  .panel { display:none; }
+  .panel.active { display:block; }
+
+  /* ── Cards ── */
+  .cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:12px; margin-bottom:20px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:16px; }
+  .card-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px; }
+  .card-value { font-size:24px; font-weight:700; }
+  .card-value.red { color:var(--red); }
+  .card-value.yellow { color:var(--yellow); }
+  .card-value.green { color:var(--green); }
+  .card-value.blue { color:var(--accent); }
+  .card-sub { font-size:11px; color:var(--muted); margin-top:4px; }
+
+  /* ── Charts row ── */
+  .charts-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px; }
+  .chart-box { background:var(--surface); border:1px solid var(--border);
+    border-radius:10px; padding:16px; }
+  .chart-box h3 { font-size:13px; color:var(--muted); margin-bottom:12px; }
+  .chart-box canvas { width:100% !important; }
+
+  /* ── Timeline ── */
+  .timeline-grid { display:flex; flex-direction:column; gap:8px; }
+  .tl-row { display:grid; grid-template-columns:130px 1fr 80px 80px 80px;
+    gap:8px; align-items:center; font-size:12px; padding:10px 14px;
+    background:var(--surface); border:1px solid var(--border); border-radius:8px;
+    cursor:pointer; transition:border-color .15s; }
+  .tl-row:hover { border-color:var(--accent); }
+  .tl-bar-wrap { height:16px; background:var(--bg); border-radius:4px; overflow:hidden; }
+  .tl-bar { height:100%; border-radius:4px; transition:width .3s; }
+  .tl-bar.red    { background:var(--red); }
+  .tl-bar.yellow { background:var(--yellow); }
+  .tl-bar.green  { background:var(--green); }
+  .tl-header { display:grid; grid-template-columns:130px 1fr 80px 80px 80px;
+    gap:8px; padding:6px 14px; font-size:11px; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.05em; }
+  .badge { display:inline-block; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:600; }
+  .badge.red    { background:rgba(243,139,168,.2); color:var(--red); }
+  .badge.yellow { background:rgba(249,226,175,.2); color:var(--yellow); }
+  .badge.green  { background:rgba(166,227,161,.2); color:var(--green); }
+
+  /* ── Tree ── */
+  .tree { display:flex; flex-direction:column; gap:4px; }
+  .tree-node { background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; overflow:hidden; }
+  .tree-header { display:grid; grid-template-columns:1fr auto auto auto auto;
+    gap:12px; align-items:center; padding:10px 14px; cursor:pointer;
+    transition:background .15s; }
+  .tree-header:hover { background:rgba(137,180,250,.05); }
+  .tree-expand { font-size:10px; color:var(--muted); transition:transform .2s; }
+  .tree-expand.open { transform:rotate(90deg); }
+  .tree-children { padding:0 8px 8px 24px; display:none; flex-direction:column; gap:4px; }
+  .tree-children.open { display:flex; }
+  .tree-leaf { display:grid; grid-template-columns:1fr auto auto; gap:12px;
+    padding:7px 10px; border-radius:6px; border:1px solid var(--border);
+    font-size:12px; background:var(--bg); align-items:center; }
+  .tool-chip { display:inline-block; padding:1px 8px; border-radius:99px; font-size:11px;
+    background:rgba(137,180,250,.15); color:var(--accent); }
+  .anomaly-chip { display:inline-block; padding:1px 8px; border-radius:99px; font-size:11px; }
+  .anomaly-chip.high { background:rgba(243,139,168,.2); color:var(--red); }
+  .anomaly-chip.medium { background:rgba(249,226,175,.2); color:var(--yellow); }
+  .val { color:var(--muted); }
+
+  /* ── Settings Modal ── */
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6);
+    z-index:200; align-items:center; justify-content:center; }
+  .modal-overlay.open { display:flex; }
+  .modal { background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:24px; width:420px; max-width:90vw; }
+  .modal h2 { font-size:16px; margin-bottom:20px; color:var(--accent); }
+  .field { margin-bottom:16px; }
+  .field label { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
+  .field input { width:100%; background:var(--bg); border:1px solid var(--border);
+    border-radius:6px; padding:8px 12px; color:var(--text); font-size:14px; }
+  .field input:focus { outline:none; border-color:var(--accent); }
+  .modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:20px; }
+  .btn { padding:8px 16px; border-radius:6px; cursor:pointer; font-size:13px; border:none; }
+  .btn-primary { background:var(--accent); color:#1e1e2e; font-weight:600; }
+  .btn-secondary { background:transparent; color:var(--muted);
+    border:1px solid var(--border); }
+  .btn:hover { opacity:.85; }
+
+  /* ── Empty state ── */
+  .empty { text-align:center; padding:60px 20px; color:var(--muted); }
+  .empty code { background:var(--bg); padding:2px 8px; border-radius:4px;
+    color:var(--accent); font-size:13px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚡ Claude Code Analytics</h1>
+  <div class="tab-bar">
+    <button class="tab active" onclick="showPanel('overview')">Overview</button>
+    <button class="tab" onclick="showPanel('timeline')">Timeline</button>
+    <button class="tab" onclick="showPanel('tree')">Drilldown</button>
+  </div>
+  <button class="gear-btn" onclick="openSettings()">⚙️</button>
+</header>
+
+<main>
+  <!-- ── Overview ── -->
+  <div id="panel-overview" class="panel active">
+    <div class="cards" id="stat-cards"></div>
+    <div class="charts-row">
+      <div class="chart-box">
+        <h3>Token Type Breakdown</h3>
+        <canvas id="chart-tokens" height="200"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>Top Tools Used</h3>
+        <canvas id="chart-tools" height="200"></canvas>
+      </div>
+    </div>
+    <div class="chart-box" style="margin-bottom:20px">
+      <h3>Session Cost (heaviest)</h3>
+      <canvas id="chart-sessions" height="120"></canvas>
+    </div>
+  </div>
+
+  <!-- ── Timeline ── -->
+  <div id="panel-timeline" class="panel">
+    <div class="tl-header">
+      <span>Session</span><span>Token Usage</span>
+      <span>Tokens</span><span>Cost</span><span>Status</span>
+    </div>
+    <div class="timeline-grid" id="timeline-rows"></div>
+  </div>
+
+  <!-- ── Drilldown Tree ── -->
+  <div id="panel-tree" class="panel">
+    <div style="margin-bottom:12px; font-size:12px; color:var(--muted)">
+      Click a session to expand messages → tools
+    </div>
+    <div class="tree" id="tree-root"></div>
+  </div>
+</main>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal">
+    <h2>⚙️ Analytics Settings</h2>
+    <div class="field">
+      <label>Daily Token Threshold</label>
+      <input type="number" id="cfg-tokens" placeholder="70000">
+    </div>
+    <div class="field">
+      <label>Duration Threshold (minutes)</label>
+      <input type="number" id="cfg-duration" placeholder="10">
+    </div>
+    <div class="field">
+      <label>Daily Cost Threshold ($)</label>
+      <input type="number" id="cfg-cost" step="0.1" placeholder="10">
+    </div>
+    <div class="field">
+      <label>Repetition Threshold (tool calls)</label>
+      <input type="number" id="cfg-rep" placeholder="100">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeSettings()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Data loading ────────────────────────────────────────────────────────────
+
+let DATA = null;
+
+async function loadData() {
+  try {
+    const r = await fetch('analytics.json');
+    DATA = await r.json();
+    render();
+  } catch (e) {
+    document.querySelector('main').innerHTML = `
+      <div class="empty">
+        <p style="font-size:18px;margin-bottom:12px">No analytics data found</p>
+        <p>Run the engine first:</p>
+        <p><code>python3 .claude/analytics/engine.py --output .claude/analytics/dashboard/analytics.json</code></p>
+      </div>`;
+  }
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+const fmt = {
+  tokens: n => n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : String(n),
+  cost:   n => '$' + n.toFixed(2),
+  date:   s => s ? new Date(s).toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-',
+  sid:    s => s.substring(0,8)+'…',
+};
+
+function severity(session) {
+  const a = session.anomalies || [];
+  if (a.some(x => x.severity === 'high')) return 'red';
+  if (a.some(x => x.severity === 'medium')) return 'yellow';
+  return 'green';
+}
+
+// ── Panels ──────────────────────────────────────────────────────────────────
+
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ── Overview ────────────────────────────────────────────────────────────────
+
+function renderOverview() {
+  const s = DATA.summary;
+
+  // Stat cards
+  const cards = [
+    { label:'Sessions', value: s.session_count, cls:'blue' },
+    { label:'Total Cost', value: fmt.cost(s.total_cost),
+      cls: s.total_cost > (DATA.config?.thresholds?.cost_per_day||10) ? 'red' : 'green' },
+    { label:'Total Tokens', value: fmt.tokens(s.total_tokens),
+      cls: s.total_tokens > (DATA.config?.thresholds?.tokens_per_day||70000) ? 'yellow' : 'green' },
+    { label:'Input Tokens', value: fmt.tokens(s.total_input_tokens), cls:'blue' },
+    { label:'Cache Read', value: fmt.tokens(s.total_cache_read_tokens), cls:'green',
+      sub: s.total_tokens > 0 ? Math.round(s.total_cache_read_tokens/s.total_tokens*100)+'% of total' : '' },
+    { label:'Anomalies', value: DATA.sessions.reduce((acc,s)=>acc+(s.anomalies||[]).length,0),
+      cls: 'red' },
+  ];
+
+  document.getElementById('stat-cards').innerHTML = cards.map(c => `
+    <div class="card">
+      <div class="card-label">${c.label}</div>
+      <div class="card-value ${c.cls}">${c.value}</div>
+      ${c.sub ? `<div class="card-sub">${c.sub}</div>` : ''}
+    </div>`).join('');
+
+  // Token breakdown donut
+  const tokenCtx = document.getElementById('chart-tokens').getContext('2d');
+  new Chart(tokenCtx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Input', 'Output', 'Cache Create', 'Cache Read'],
+      datasets: [{
+        data: [s.total_input_tokens, s.total_output_tokens, s.total_cache_create_tokens, s.total_cache_read_tokens],
+        backgroundColor: ['#89b4fa','#a6e3a1','#f9e2af','#cba6f7'],
+        borderWidth: 0,
+      }]
+    },
+    options: { plugins: { legend: { labels: { color:'#cdd6f4', font:{size:11} } } },
+      responsive:true, maintainAspectRatio:true }
+  });
+
+  // Top tools bar
+  const tools = s.tool_totals;
+  const toolNames = Object.keys(tools).slice(0,10);
+  const toolCtx = document.getElementById('chart-tools').getContext('2d');
+  new Chart(toolCtx, {
+    type: 'bar',
+    data: {
+      labels: toolNames,
+      datasets: [{ data: toolNames.map(t=>tools[t]),
+        backgroundColor: '#89b4fa', borderRadius: 4 }]
+    },
+    options: {
+      indexAxis: 'y',
+      plugins: { legend: { display:false } },
+      scales: {
+        x: { ticks:{color:'#6c7086'}, grid:{color:'#3a3a5c'} },
+        y: { ticks:{color:'#cdd6f4', font:{size:11}}, grid:{display:false} }
+      },
+      responsive:true, maintainAspectRatio:true
+    }
+  });
+
+  // Session cost bar
+  const heavy = s.heaviest_sessions.slice(0,8);
+  const sessCtx = document.getElementById('chart-sessions').getContext('2d');
+  new Chart(sessCtx, {
+    type: 'bar',
+    data: {
+      labels: heavy.map(h => fmt.sid(h.session_id)),
+      datasets: [{
+        label: 'Cost ($)',
+        data: heavy.map(h=>h.total_cost),
+        backgroundColor: heavy.map(h =>
+          h.anomaly_count > 0 ? '#f38ba8' : '#a6e3a1'),
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      plugins: { legend: { display:false } },
+      scales: {
+        x: { ticks:{color:'#cdd6f4',font:{size:11}}, grid:{display:false} },
+        y: { ticks:{color:'#6c7086'}, grid:{color:'#3a3a5c'} }
+      },
+      responsive:true, maintainAspectRatio:true
+    }
+  });
+}
+
+// ── Timeline ────────────────────────────────────────────────────────────────
+
+function renderTimeline() {
+  const sessions = DATA.sessions;
+  const maxTokens = Math.max(...sessions.map(s=>s.total_tokens), 1);
+
+  document.getElementById('timeline-rows').innerHTML = sessions.map(s => {
+    const sev = severity(s);
+    const pct = Math.max(2, Math.round(s.total_tokens / maxTokens * 100));
+    return `
+    <div class="tl-row" onclick="switchToTree('${s.session_id}')">
+      <span style="color:var(--muted);font-size:11px">${fmt.date(s.start)}</span>
+      <div class="tl-bar-wrap">
+        <div class="tl-bar ${sev}" style="width:${pct}%"></div>
+      </div>
+      <span>${fmt.tokens(s.total_tokens)}</span>
+      <span>${fmt.cost(s.total_cost)}</span>
+      <span class="badge ${sev}">${sev === 'red' ? '⚠ Heavy' : sev === 'yellow' ? '〜 Medium' : '✓ Light'}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Tree ────────────────────────────────────────────────────────────────────
+
+let activeSession = null;
+
+function switchToTree(sessionId) {
+  activeSession = sessionId;
+  showPanel('tree');
+  document.querySelectorAll('.tab')[2].classList.add('active');
+  document.querySelectorAll('.tab')[1].classList.remove('active');
+  renderTree();
+}
+
+function renderTree() {
+  const sessions = DATA.sessions.filter(s => !activeSession || s.session_id === activeSession);
+
+  document.getElementById('tree-root').innerHTML = sessions.map(sess => {
+    const sev = severity(sess);
+    const anomalies = (sess.anomalies||[]).map(a =>
+      `<span class="anomaly-chip ${a.severity}">${a.type}</span>`).join(' ');
+
+    const messages = (sess.messages || []).filter(m => m.role === 'user').map((m,i) => {
+      const toolList = [...new Set(m.tools||[])];
+      const toolChips = toolList.map(t=>`<span class="tool-chip">${t}</span>`).join(' ');
+      return `
+        <div class="tree-node" style="background:var(--bg)">
+          <div class="tree-header" onclick="toggleNode(this)">
+            <span style="font-size:12px">▸ Msg #${i+1}: ${m.text_preview ? m.text_preview.substring(0,60)+'…' : '(empty)'}</span>
+            <span class="val">${toolList.length} tools</span>
+            <span class="val">${fmt.tokens(m.input_tokens + m.output_tokens)}</span>
+            <span class="val">${fmt.cost(m.cost)}</span>
+            <span class="tree-expand">▶</span>
+          </div>
+          <div class="tree-children">
+            ${toolChips ? `<div style="padding:6px 4px">${toolChips}</div>` : ''}
+            <div class="tree-leaf">
+              <span>Input tokens</span><span></span><span class="val">${fmt.tokens(m.input_tokens)}</span>
+            </div>
+            <div class="tree-leaf">
+              <span>Output tokens</span><span></span><span class="val">${fmt.tokens(m.output_tokens)}</span>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    return `
+    <div class="tree-node">
+      <div class="tree-header" onclick="toggleNode(this)">
+        <span style="font-weight:600">${fmt.sid(sess.session_id)} &nbsp; ${anomalies}</span>
+        <span class="val">${sess.message_count} msgs</span>
+        <span class="val">${fmt.tokens(sess.total_tokens)}</span>
+        <span class="val badge ${sev}">${fmt.cost(sess.total_cost)}</span>
+        <span class="tree-expand">▶</span>
+      </div>
+      <div class="tree-children">
+        ${messages || '<div style="color:var(--muted);padding:8px">No messages</div>'}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleNode(header) {
+  const children = header.nextElementSibling;
+  const arrow = header.querySelector('.tree-expand');
+  const isOpen = children.classList.contains('open');
+  children.classList.toggle('open', !isOpen);
+  if (arrow) arrow.classList.toggle('open', !isOpen);
+}
+
+// ── Settings ─────────────────────────────────────────────────────────────────
+
+function openSettings() {
+  const cfg = DATA?.config?.thresholds || {};
+  const det = DATA?.config?.detection || {};
+  document.getElementById('cfg-tokens').value   = cfg.tokens_per_day || 70000;
+  document.getElementById('cfg-duration').value = cfg.duration_minutes || 10;
+  document.getElementById('cfg-cost').value     = cfg.cost_per_day || 10;
+  document.getElementById('cfg-rep').value      = det.repetition_threshold || 100;
+  document.getElementById('settings-modal').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('settings-modal').classList.remove('open');
+}
+
+function saveSettings() {
+  if (!DATA) return;
+  DATA.config.thresholds.tokens_per_day   = +document.getElementById('cfg-tokens').value;
+  DATA.config.thresholds.duration_minutes = +document.getElementById('cfg-duration').value;
+  DATA.config.thresholds.cost_per_day     = +document.getElementById('cfg-cost').value;
+  DATA.config.detection.repetition_threshold = +document.getElementById('cfg-rep').value;
+
+  // Re-render with new thresholds
+  document.getElementById('stat-cards').innerHTML = '';
+  renderOverview();
+  closeSettings();
+
+  // Show save hint
+  alert('Settings applied.\nTo persist: save ~/.claude/analytics-config.json manually or re-run engine.');
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+function render() {
+  renderOverview();
+  renderTimeline();
+  renderTree();
+}
+
+loadData();
+</script>
+</body>
+</html>
