@@ -1,7 +1,7 @@
 # Claude Context Manager - Makefile
 # 便利なショートカットコマンド集
 
-.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch ccusage-report analytics analytics-update
+.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch ccusage-report analytics analytics-update validate-analytics
 
 # デフォルトターゲット: ヘルプを表示
 help:
@@ -203,24 +203,29 @@ ci-watch:
 		fi; \
 	done
 
-# Analytics ダッシュボード生成 + ブラウザ起動
+# Analytics ダッシュボード生成 + 自己診断 + ブラウザ起動
 analytics:
 	@echo "📊 Generating analytics data..."
 	@python3 .claude/analytics/engine.py \
 		--sessions 10 \
-		--output .claude/analytics/dashboard/analytics.json
+		--html-output .claude/analytics/dashboard/dashboard.html
+	@$(MAKE) --no-print-directory validate-analytics
 	@echo "🌐 Opening dashboard..."
-	@open .claude/analytics/dashboard/index.html 2>/dev/null || \
-		xdg-open .claude/analytics/dashboard/index.html 2>/dev/null || \
-		echo "Open: .claude/analytics/dashboard/index.html"
+	@open .claude/analytics/dashboard/dashboard.html 2>/dev/null || \
+		xdg-open .claude/analytics/dashboard/dashboard.html 2>/dev/null || \
+		echo "Open: .claude/analytics/dashboard/dashboard.html"
 
 # Analytics データのみ更新（ブラウザは開かない）
 analytics-update:
 	@echo "📊 Updating analytics data..."
 	@python3 .claude/analytics/engine.py \
 		--sessions 10 \
-		--output .claude/analytics/dashboard/analytics.json
-	@echo "✅ Done. Open .claude/analytics/dashboard/index.html to view."
+		--html-output .claude/analytics/dashboard/dashboard.html
+	@$(MAKE) --no-print-directory validate-analytics
+
+# Analytics 自己診断（構造チェック + Playwright スクリーンショット）
+validate-analytics:
+	@bash scripts/validate-analytics.sh
 
 # ccusageトークン使用量レポート
 ccusage-report:

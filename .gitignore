@@ -96,3 +96,7 @@ detect_secrets/
 # Google Slides artifacts
 create_google_slide.py
 credentials.json.old
+
+# Analytics generated files
+.claude/analytics/dashboard/dashboard.html
+.claude/analytics/dashboard/analytics.json

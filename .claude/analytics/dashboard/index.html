@@ -203,6 +203,12 @@
 let DATA = null;
 
 async function loadData() {
+  // Inline data injected by engine.py (works with file:// protocol)
+  if (window.__ANALYTICS_DATA__) {
+    DATA = window.__ANALYTICS_DATA__;
+    render();
+    return;
+  }
   try {
     const r = await fetch('analytics.json');
     DATA = await r.json();
@@ -212,7 +218,7 @@ async function loadData() {
       <div class="empty">
         <p style="font-size:18px;margin-bottom:12px">No analytics data found</p>
         <p>Run the engine first:</p>
-        <p><code>python3 .claude/analytics/engine.py --output .claude/analytics/dashboard/analytics.json</code></p>
+        <p><code>make analytics</code></p>
       </div>`;
   }
 }

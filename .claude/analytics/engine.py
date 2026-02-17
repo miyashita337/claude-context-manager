@@ -322,7 +322,23 @@ def build_summary(sessions, config):
 
 # ── Main ───────────────────────────────────────────────────────────────────
 
-def run_analysis(project_dir=None, max_sessions=10, output_path=None, config=None):
+def generate_html_output(result, html_path):
+    """Generate a self-contained HTML file with data embedded (works with file://)"""
+    template = Path(__file__).parent / "dashboard" / "index.html"
+    if not template.exists():
+        print(f"❌ Template not found: {template}", file=sys.stderr)
+        return
+    html = template.read_text(encoding="utf-8")
+    data_js = json.dumps(result, ensure_ascii=False)
+    injection = f"<script>window.__ANALYTICS_DATA__ = {data_js};</script>"
+    html = html.replace("</head>", f"{injection}\n</head>")
+    out = Path(html_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    print(f"✅ Dashboard saved to {out}", file=sys.stderr)
+
+
+def run_analysis(project_dir=None, max_sessions=10, output_path=None, html_output_path=None, config=None):
     if config is None:
         config = load_config()
 
@@ -362,13 +378,15 @@ def run_analysis(project_dir=None, max_sessions=10, output_path=None, config=Non
         "sessions": sessions,
     }
 
+    if html_output_path:
+        generate_html_output(result, html_output_path)
     if output_path:
         out = Path(output_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         with open(out, "w") as f:
             json.dump(result, f, indent=2, ensure_ascii=False)
         print(f"✅ Analytics data saved to {out}", file=sys.stderr)
-    else:
+    if not output_path and not html_output_path:
         print(json.dumps(result, indent=2, ensure_ascii=False))
 
     return result
@@ -379,6 +397,7 @@ if __name__ == "__main__":
     parser.add_argument("--project", help="Project directory path")
     parser.add_argument("--sessions", type=int, default=10, help="Max sessions to analyze (default: 10)")
     parser.add_argument("--output", help="Output JSON path (default: stdout)")
+    parser.add_argument("--html-output", help="Output self-contained HTML path (works with file://)")
     parser.add_argument("--config-init", action="store_true", help="Initialize default config file")
     args = parser.parse_args()
 
@@ -391,4 +410,5 @@ if __name__ == "__main__":
         project_dir=args.project,
         max_sessions=args.sessions,
         output_path=args.output,
+        html_output_path=args.html_output,
     )
