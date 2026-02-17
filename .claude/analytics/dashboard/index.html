@@ -90,9 +90,22 @@
     font-size:12px; background:var(--bg); align-items:center; }
   .tool-chip { display:inline-block; padding:1px 8px; border-radius:99px; font-size:11px;
     background:rgba(137,180,250,.15); color:var(--accent); }
-  .anomaly-chip { display:inline-block; padding:1px 8px; border-radius:99px; font-size:11px; }
+  .anomaly-chip { display:inline-block; padding:1px 8px; border-radius:99px; font-size:11px;
+    position:relative; cursor:help; }
   .anomaly-chip.high { background:rgba(243,139,168,.2); color:var(--red); }
   .anomaly-chip.medium { background:rgba(249,226,175,.2); color:var(--yellow); }
+  .anomaly-tip {
+    display:none; position:absolute; bottom:calc(100% + 6px); left:0;
+    background:#13131f; border:1px solid var(--border); border-radius:8px;
+    padding:12px 14px; width:300px; z-index:500; font-size:12px; line-height:1.7;
+    white-space:normal; pointer-events:none; box-shadow:0 4px 20px rgba(0,0,0,.5);
+  }
+  .anomaly-chip:hover .anomaly-tip { display:block; }
+  .anomaly-tip ul { margin:3px 0 6px; padding-left:16px; }
+  .anomaly-tip li { margin-bottom:2px; }
+  .tip-title { font-weight:700; font-size:13px; margin-bottom:4px; color:var(--text); }
+  .tip-threshold { font-size:11px; color:var(--muted); margin-bottom:8px; }
+  .tip-section { font-size:11px; font-weight:600; margin-bottom:2px; }
   .val { color:var(--muted); }
 
   /* ── Settings Modal ── */
@@ -379,13 +392,54 @@ function switchToTree(sessionId) {
   renderTree();
 }
 
+const ANOMALY_ADVICE = {
+  kitchen_sink: {
+    title: '🪣 Kitchen-Sink',
+    threshold: '1セッション 167K tokens超',
+    bad: ['会話を切らず複数タスクを詰め込む', 'ファイルを丸ごとRead（必要な行だけでよい）', 'デバッグ失敗ログが蓄積し続ける', '長い説明文で指示する'],
+    fix: ['RAG: Grep/Globで必要箇所のみ取得', '1タスク=1セッションに分割', '/compactでコンテキストを圧縮してから続ける', 'Few-shot: 長い説明より良い例1つを提示'],
+  },
+  long_duration: {
+    title: '⏱ Long Duration',
+    threshold: '10分超（設定変更可）',
+    bad: ['1セッションに複数タスクを詰め込む', '方針転換を繰り返し試行錯誤が長引く'],
+    fix: ['タスク完了ごとにセッションを切断', '重要情報はmemory/またはCLAUDE.mdに書き出す', 'コンテキストエンジニアリング: 着手前にセッション設計を行う'],
+  },
+  repetition: {
+    title: '🔁 Repetition',
+    threshold: '同一ツール100回超',
+    bad: ['同じエラーで同じコマンドを繰り返す（エラーループ）', 'スクリプトを微修正しながら何十回も実行'],
+    fix: ['3回同じエラー→停止してアプローチを変える', 'Web検索・公式ドキュメントで根本原因を調査', 'PITFALLS.mdで既知の解決策を確認'],
+  },
+  high_cost: {
+    title: '💸 High Cost',
+    threshold: '$5超',
+    bad: ['単純タスクにOpusを使い続ける', 'キャッシュが効かない短命セッションを量産'],
+    fix: ['単純タスクはHaiku/Sonnetに切り替え', 'セッション継続でキャッシュを活用（94%節約可能）', 'make ccusage-reportで日次コスト監視'],
+  },
+};
+
+function anomalyChip(a) {
+  const adv = ANOMALY_ADVICE[a.type] || { title: a.type, threshold: a.detail, bad: [], fix: [] };
+  const badHtml = adv.bad.map(b => `<li style="color:var(--red)">${b}</li>`).join('');
+  const fixHtml = adv.fix.map(f => `<li style="color:var(--green)">${f}</li>`).join('');
+  return `<span class="anomaly-chip ${a.severity}">
+    ${a.type}
+    <div class="anomaly-tip">
+      <div class="tip-title">${adv.title}</div>
+      <div class="tip-threshold">閾値: ${adv.threshold}</div>
+      ${badHtml ? `<div class="tip-section" style="color:var(--red)">❌ 問題パターン</div><ul>${badHtml}</ul>` : ''}
+      ${fixHtml ? `<div class="tip-section" style="color:var(--green)">✅ 対策</div><ul>${fixHtml}</ul>` : ''}
+    </div>
+  </span>`;
+}
+
 function renderTree() {
   const sessions = DATA.sessions.filter(s => !activeSession || s.session_id === activeSession);
 
   document.getElementById('tree-root').innerHTML = sessions.map(sess => {
     const sev = severity(sess);
-    const anomalies = (sess.anomalies||[]).map(a =>
-      `<span class="anomaly-chip ${a.severity}">${a.type}</span>`).join(' ');
+    const anomalies = (sess.anomalies||[]).map(anomalyChip).join(' ');
 
     const messages = (sess.messages || []).filter(m => m.role === 'user').map((m,i) => {
       const toolList = [...new Set(m.tools||[])];
