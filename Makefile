@@ -1,7 +1,7 @@
 # Claude Context Manager - Makefile
 # 便利なショートカットコマンド集
 
-.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch ccusage-report analytics analytics-update validate-analytics
+.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch ccusage-report analytics analytics-update validate-analytics review review-latest review-list update-antipatterns
 
 # デフォルトターゲット: ヘルプを表示
 help:
@@ -27,6 +27,12 @@ help:
 	@echo "  make ccusage-report   - Claude Codeトークン使用量レポート（今日）"
 	@echo "  make analytics        - Analytics ダッシュボードを生成・起動"
 	@echo "  make analytics-update - Analytics データを更新（ブラウザは開かない）"
+	@echo ""
+	@echo "📋 セッションレビュー:"
+	@echo "  make review SESSION=<id>  - セッションデータをキャッシュ（/review の前準備）"
+	@echo "  make review-latest        - 最新セッションをキャッシュ"
+	@echo "  make review-list          - 既存レビュー一覧表示"
+	@echo "  make update-antipatterns  - /antipatterns スキルの更新チェック"
 	@echo ""
 	@echo "🔄 CI/CD:"
 	@echo "  make ci-watch PR=<n>  - PR #nのCI監視（自動リトライ）"
@@ -239,3 +245,45 @@ ccusage-report:
 	@ccusage daily --since "$$(date +%Y%m%d)"
 	@echo ""
 	@echo "💡 For more options, use the /ccusage skill in Claude Code"
+
+# セッションレビュー（AI分析）
+review:
+	@if [ -z "$(SESSION)" ]; then \
+		echo "❌ SESSION is required"; \
+		echo "Usage: make review SESSION=<session-id>"; \
+		echo "Or:    make review-latest"; \
+		exit 1; \
+	fi
+	@echo "📋 Caching session data for review: $(SESSION)"
+	@mkdir -p ~/.claude/reviews/.cache
+	@python3 .claude/analytics/engine.py \
+		--session-id $(SESSION) \
+		--output ~/.claude/reviews/.cache/$(SESSION).json
+	@echo "✅ Cache ready. Use /review $(SESSION) in Claude Code for full AI review."
+
+# 最新セッションをレビュー
+review-latest:
+	@echo "📋 Finding latest session..."
+	@LATEST=$$(python3 .claude/analytics/engine.py --sessions 1 --output /tmp/_review_latest.json 2>/dev/null && \
+		python3 -c "import json; d=json.load(open('/tmp/_review_latest.json')); print(d['sessions'][0]['session_id'])" 2>/dev/null); \
+	if [ -z "$$LATEST" ]; then echo "❌ No sessions found"; exit 1; fi; \
+	echo "Latest session: $$LATEST"; \
+	$(MAKE) review SESSION=$$LATEST
+
+# 既存レビュー一覧
+review-list:
+	@echo "📋 Existing reviews (~/.claude/reviews/):"
+	@ls ~/.claude/reviews/*.md 2>/dev/null | sed 's|.*/||' || echo "  (no reviews yet)"
+	@echo ""
+	@echo "💡 Use /review [SESSION_ID] in Claude Code to create a review"
+
+# /antipatterns スキルを公式ドキュメントと照合・更新チェック
+update-antipatterns:
+	@echo "📋 /antipatterns skill の最終確認日:"
+	@grep "最終確認" .claude/skills/antipatterns/SKILL.md || echo "  (日付未設定)"
+	@echo ""
+	@echo "🔄 更新方法:"
+	@echo "  Claude Code 内で実行:"
+	@echo "  /fact-check \"Verify antipatterns match official docs at code.claude.com/docs/en/best-practices\""
+	@echo ""
+	@echo "💡 30日以上経過している場合は更新を推奨します"
