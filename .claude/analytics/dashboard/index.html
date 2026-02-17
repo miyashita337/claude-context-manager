@@ -95,12 +95,11 @@
   .anomaly-chip.high { background:rgba(243,139,168,.2); color:var(--red); }
   .anomaly-chip.medium { background:rgba(249,226,175,.2); color:var(--yellow); }
   .anomaly-tip {
-    display:none; position:absolute; bottom:calc(100% + 6px); left:0;
+    display:none; position:fixed;
     background:#13131f; border:1px solid var(--border); border-radius:8px;
-    padding:12px 14px; width:300px; z-index:500; font-size:12px; line-height:1.7;
+    padding:12px 14px; width:300px; z-index:9999; font-size:12px; line-height:1.7;
     white-space:normal; pointer-events:none; box-shadow:0 4px 20px rgba(0,0,0,.5);
   }
-  .anomaly-chip:hover .anomaly-tip { display:block; }
   .anomaly-tip ul { margin:3px 0 6px; padding-left:16px; }
   .anomaly-tip li { margin-bottom:2px; }
   .tip-title { font-weight:700; font-size:13px; margin-bottom:4px; color:var(--text); }
@@ -419,11 +418,31 @@ const ANOMALY_ADVICE = {
   },
 };
 
+let _tipEl = null;
+function showTip(chip) {
+  const tip = chip.querySelector('.anomaly-tip');
+  if (!tip) return;
+  tip.style.display = 'block';
+  const rect = chip.getBoundingClientRect();
+  const tipH = tip.offsetHeight;
+  const top = rect.top - tipH - 6 < 8
+    ? rect.bottom + 6          // 上がはみ出す場合は下に
+    : rect.top - tipH - 6;
+  const left = Math.min(rect.left, window.innerWidth - 316);
+  tip.style.top  = top + 'px';
+  tip.style.left = left + 'px';
+  _tipEl = tip;
+}
+function hideTip() {
+  if (_tipEl) { _tipEl.style.display = 'none'; _tipEl = null; }
+}
+
 function anomalyChip(a) {
   const adv = ANOMALY_ADVICE[a.type] || { title: a.type, threshold: a.detail, bad: [], fix: [] };
   const badHtml = adv.bad.map(b => `<li style="color:var(--red)">${b}</li>`).join('');
   const fixHtml = adv.fix.map(f => `<li style="color:var(--green)">${f}</li>`).join('');
-  return `<span class="anomaly-chip ${a.severity}">
+  return `<span class="anomaly-chip ${a.severity}"
+      onmouseenter="showTip(this)" onmouseleave="hideTip()">
     ${a.type}
     <div class="anomaly-tip">
       <div class="tip-title">${adv.title}</div>
