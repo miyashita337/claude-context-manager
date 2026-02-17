@@ -1,7 +1,7 @@
 # Claude Context Manager - Makefile
 # 便利なショートカットコマンド集
 
-.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch
+.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch ccusage-report
 
 # デフォルトターゲット: ヘルプを表示
 help:
@@ -22,6 +22,9 @@ help:
 	@echo "  make fix-hooks        - Hook設定の自動修復（バックアップから復元）"
 	@echo "  make backup-hooks     - Hook設定のバックアップ作成"
 	@echo "  make restore-hooks    - Hook設定をバックアップから復元"
+	@echo ""
+	@echo "📊 分析:"
+	@echo "  make ccusage-report   - Claude Codeトークン使用量レポート（今日）"
 	@echo ""
 	@echo "🔄 CI/CD:"
 	@echo "  make ci-watch PR=<n>  - PR #nのCI監視（自動リトライ）"
@@ -197,3 +200,16 @@ ci-watch:
 			exit 0; \
 		fi; \
 	done
+
+# ccusageトークン使用量レポート
+ccusage-report:
+	@if ! command -v ccusage &>/dev/null; then \
+		echo "❌ ccusage is not installed"; \
+		echo "   Fix: npm install -g ccusage"; \
+		exit 1; \
+	fi
+	@echo "📊 Claude Code Token Usage - Today"
+	@echo ""
+	@ccusage daily --since "$$(date +%Y%m%d)"
+	@echo ""
+	@echo "💡 For more options, use the /ccusage skill in Claude Code"

@@ -2,7 +2,7 @@
 
 **Purpose**: A grep-friendly database of known error patterns, solutions, and prevention strategies encountered in Claude Context Manager development.
 
-**Last Updated**: 2026-02-15
+**Last Updated**: 2026-02-17
 
 ---
 
@@ -13,6 +13,7 @@
 - [Security Errors](#security-errors)
 - [API Errors](#api-errors)
 - [Build Errors](#build-errors)
+- [ccusage Errors](#ccusage-errors)
 
 ---
 
@@ -410,9 +411,98 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 ---
 
+## ccusage Errors
+
+### CCUSAGE-001: Wrong Package Name
+
+**Error Signature**: `command not found: ccusage` after installing `@ccusage/codex`
+
+**Context**: Occurs when installing the wrong npm package. `@ccusage/codex` is for Codex CLI (OpenAI), not Claude Code.
+
+**Root Cause**: Two similarly named packages exist:
+- `ccusage` — for **Claude Code** ✅
+- `@ccusage/codex` — for **OpenAI Codex CLI** ❌
+
+**Solution**:
+```bash
+# Uninstall wrong package
+npm uninstall -g @ccusage/codex
+
+# Install correct package
+npm install -g ccusage
+
+# Verify
+ccusage --version
+```
+
+**Prevention**: Always use `ccusage` (not `@ccusage/codex`) for Claude Code analysis.
+
+**Tags**: ccusage, npm, package, installation
+**Severity**: Medium
+**Date Added**: 2026-02-17
+
+---
+
+### CCUSAGE-002: Invalid Date Format
+
+**Error Signature**: `Invalid date format` or unexpected empty output from `ccusage daily`
+
+**Context**: ccusage requires dates in `YYYYMMDD` format without hyphens.
+
+**Root Cause**: Using ISO 8601 format (`2026-02-01`) instead of ccusage format (`20260201`).
+
+**Solution**:
+```bash
+# Wrong
+ccusage daily --since 2026-02-01   # ❌
+
+# Correct
+ccusage daily --since 20260201     # ✅
+
+# Today's date (dynamic)
+ccusage daily --since "$(date +%Y%m%d)"   # ✅
+```
+
+**Prevention**: Always use `YYYYMMDD` format for ccusage date arguments.
+
+**Tags**: ccusage, date, format
+**Severity**: Low
+**Date Added**: 2026-02-17
+
+---
+
+### CCUSAGE-003: jq Not Installed
+
+**Error Signature**: `jq: command not found` when using `ccusage session --json | jq`
+
+**Context**: ccusage's `--json` flag outputs raw JSON; jq is needed for filtering.
+
+**Root Cause**: `jq` is not installed on the system.
+
+**Solution**:
+```bash
+# Install jq
+brew install jq          # macOS
+apt-get install jq       # Linux
+
+# Without jq (use --json alone)
+ccusage session --json
+
+# Or use built-in jq support
+ccusage session --jq '.entries[] | select(.cost > 5)'
+```
+
+**Prevention**: Install jq as part of dev environment setup. Alternatively use ccusage's built-in `--jq` flag.
+
+**Tags**: ccusage, jq, json, dependency
+**Severity**: Low
+**Date Added**: 2026-02-17
+
+---
+
 ## Metadata
 
-**Total Entries**: 6
+**Total Entries**: 9
 **Categories**: 5
 **Phase**: 1 (0-50 entries, flat structure)
 **Next Review**: At 20 entries (consider adding indexes)
@@ -439,5 +529,6 @@ When adding a new entry:
 
 ## Version History
 
+- 2026-02-17 (Update): Added ccusage Errors category (CCUSAGE-001, CCUSAGE-002, CCUSAGE-003). Total: 9 entries
 - 2026-02-15 (Update): Added HOOK-002 stdin sanitization solution, HOOK-003 (stop.py empty stdin guard). Total: 6 entries
 - 2026-02-15: Initial creation with 4 seed entries (GIT-001, GIT-002, HOOK-001, SEC-001)

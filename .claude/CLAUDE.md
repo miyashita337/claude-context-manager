@@ -149,6 +149,34 @@ git commit          # pre-commitフックが自動実行（P1実装後）
 
 ---
 
+#### `/ccusage` - トークン使用量・コスト分析
+**用途**: Claude Codeセッションのトークン使用量とコストを分析し、最適化の根拠となるエビデンスを提供
+
+```bash
+# 使用例
+/ccusage                          # 今日のサマリー
+/ccusage daily --since 20260201   # 2月の日次内訳
+/ccusage session                  # セッション別詳細
+/ccusage monthly --breakdown      # モデル別コスト内訳
+```
+
+**分析機能**:
+- 日次/月次/セッション別トークン使用量レポート
+- 高コストセッションの自動検出（閾値: $5）
+- Kitchen-Sinkセッション検出（閾値: 167K tokens）
+- SpecStory連携でcompactイベント検出
+- JSON出力 + jq統合
+
+**いつ使うか**:
+- コストが高くなっていると感じた時
+- どのセッション/タスクが重いかを調査したい時
+- compact頻度が多いと感じた時
+- 代替ソリューション検討のエビデンスが必要な時
+
+**注意**: `ccusage`（Claude Code用）を使用。`@ccusage/codex`（Codex CLI用）は別物。
+
+---
+
 ## CI自動監視（AgentTeams）
 
 ### 概要
