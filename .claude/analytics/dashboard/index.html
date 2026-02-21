@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Claude Code Analytics</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -126,6 +127,74 @@
     border:1px solid var(--border); }
   .btn:hover { opacity:.85; }
 
+  /* ── Bottleneck ── */
+  .bn-score-badge { display:inline-block; padding:1px 7px; border-radius:4px;
+    font-size:10px; font-weight:700; font-family:monospace; margin-left:6px; }
+  .bn-score-badge.bn-high   { background:rgba(243,139,168,.2); color:var(--red); }
+  .bn-score-badge.bn-medium { background:rgba(249,226,175,.2); color:var(--yellow); }
+  .bn-score-badge.bn-low    { background:rgba(108,112,134,.2); color:var(--muted); }
+
+  .bn-report { background:var(--bg); border:1px solid var(--border); border-radius:8px;
+    margin:4px 0; overflow:hidden; }
+  .bn-report-header { display:flex; align-items:center; gap:8px; padding:8px 12px;
+    cursor:pointer; font-size:12px; color:var(--muted); transition:background .15s; }
+  .bn-report-header:hover { background:rgba(137,180,250,.05); }
+  .bn-report-header .bn-arrow { font-size:10px; transition:transform .2s; }
+  .bn-report-header .bn-arrow.open { transform:rotate(90deg); }
+  .bn-report-body { display:none; padding:0 12px 10px 28px; font-size:12px; }
+  .bn-report-body.open { display:block; }
+
+  .bn-issue-group { margin-bottom:6px; }
+  .bn-issue-group summary { cursor:pointer; color:var(--text); font-size:12px; list-style:none; }
+  .bn-issue-group summary::before { content:'▸ '; color:var(--muted); }
+  .bn-issue-group[open] summary::before { content:'▾ '; }
+  .bn-issue-group .bn-detail { padding:2px 0 2px 16px; color:var(--muted); font-size:11px;
+    line-height:1.6; }
+  .bn-issue-type { display:inline-block; padding:1px 6px; border-radius:3px;
+    font-size:10px; font-weight:600; margin-right:4px; }
+  .bn-issue-type.tool_loop          { background:rgba(243,139,168,.15); color:var(--red); }
+  .bn-issue-type.large_tool_result  { background:rgba(250,179,135,.15); color:var(--orange); }
+  .bn-issue-type.token_spike        { background:rgba(249,226,175,.15); color:var(--yellow); }
+  .bn-issue-type.repeated_file_read { background:rgba(137,180,250,.15); color:var(--accent); }
+
+  .bn-top-issues { margin-top:8px; padding-top:6px; border-top:1px solid var(--border); }
+  .bn-top-issues .bn-top-label { font-size:11px; font-weight:600; color:var(--orange);
+    margin-bottom:4px; }
+  .bn-top-issues li { color:var(--muted); font-size:11px; line-height:1.6;
+    list-style:disc; margin-left:16px; }
+
+  /* ── Reviews ── */
+  .reviews-list { display:flex; flex-direction:column; gap:8px; }
+  .review-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .review-card-header { display:flex; align-items:center; justify-content:space-between;
+    padding:10px 14px; cursor:pointer; font-size:12px; transition:background .15s; }
+  .review-card-header:hover { background:rgba(137,180,250,.05); }
+  .review-card-title { font-weight:600; color:var(--text); }
+  .review-card-date { font-size:11px; color:var(--muted); }
+  .review-card-body { display:none; padding:20px; border-top:1px solid var(--border); }
+  .review-card-body.open { display:block; }
+  .review-content { font-size:13px; line-height:1.7; color:var(--text); }
+  .review-content h1 { font-size:16px; font-weight:700; margin:0 0 12px; color:var(--accent); }
+  .review-content h2 { font-size:14px; font-weight:600; margin:16px 0 8px; color:var(--text); border-bottom:1px solid var(--border); padding-bottom:4px; }
+  .review-content h3 { font-size:13px; font-weight:600; margin:12px 0 6px; color:var(--yellow); }
+  .review-content p { margin:0 0 8px; }
+  .review-content code { background:var(--bg); border:1px solid var(--border); border-radius:3px;
+    padding:1px 5px; font-family:monospace; font-size:12px; color:var(--accent); }
+  .review-content pre { background:var(--bg); border:1px solid var(--border); border-radius:6px;
+    padding:12px; overflow-x:auto; margin:8px 0; }
+  .review-content pre code { border:none; padding:0; background:none; color:var(--text); }
+  .review-content ul, .review-content ol { padding-left:20px; margin:4px 0 8px; }
+  .review-content li { margin-bottom:3px; }
+  .review-content table { border-collapse:collapse; width:100%; margin:8px 0; font-size:12px; }
+  .review-content th, .review-content td { border:1px solid var(--border); padding:5px 10px; text-align:left; }
+  .review-content th { background:var(--bg); color:var(--muted); font-weight:600; }
+  .review-content hr { border:none; border-top:1px solid var(--border); margin:16px 0; }
+  .review-content strong { color:var(--text); font-weight:700; }
+  .review-content a { color:var(--accent); text-decoration:none; }
+  .review-content a:hover { text-decoration:underline; }
+  .review-content blockquote { border-left:3px solid var(--border); margin:8px 0;
+    padding:4px 12px; color:var(--muted); font-style:italic; }
+
   /* ── Empty state ── */
   .empty { text-align:center; padding:60px 20px; color:var(--muted); }
   .empty code { background:var(--bg); padding:2px 8px; border-radius:4px;
@@ -140,6 +209,7 @@
     <button class="tab active" onclick="showPanel('overview')">Overview</button>
     <button class="tab" onclick="showPanel('timeline')">Timeline</button>
     <button class="tab" onclick="showPanel('tree')">Drilldown</button>
+    <button class="tab" onclick="showPanel('reviews')">Reviews</button>
   </div>
   <button class="gear-btn" onclick="openSettings()">⚙️</button>
 </header>
@@ -162,6 +232,16 @@
       <h3>Session Cost (heaviest)</h3>
       <canvas id="chart-sessions" height="120"></canvas>
     </div>
+    <div class="charts-row">
+      <div class="chart-box">
+        <h3>Bottleneck Issue Distribution</h3>
+        <canvas id="chart-bn-issues" height="200"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>Sessions by Bottleneck Score</h3>
+        <canvas id="chart-bn-scores" height="200"></canvas>
+      </div>
+    </div>
   </div>
 
   <!-- ── Timeline ── -->
@@ -171,6 +251,11 @@
       <span>Tokens</span><span>Cost</span><span>Status</span>
     </div>
     <div class="timeline-grid" id="timeline-rows"></div>
+  </div>
+
+  <!-- ── Reviews ── -->
+  <div id="panel-reviews" class="panel">
+    <div class="reviews-list" id="reviews-list"></div>
   </div>
 
   <!-- ── Drilldown Tree ── -->
@@ -357,6 +442,69 @@ function renderOverview() {
   });
 }
 
+// ── Bottleneck Overview ─────────────────────────────────────────────────────
+
+function renderBottleneckOverview() {
+  const bn = DATA.summary.bottleneck_summary;
+  if (!bn) return;
+
+  // Issue Distribution horizontal bar chart
+  const issueTypes = ['tool_loop','large_tool_result','token_spike','repeated_file_read'];
+  const issueLabels = ['Tool Loop','Large Tool Result','Token Spike','Repeated File Read'];
+  const issueColors = ['#f38ba8','#fab387','#f9e2af','#89b4fa'];
+  const issueCounts = issueTypes.map(t => (bn.issue_breakdown||{})[t] || 0);
+
+  const bnIssCtx = document.getElementById('chart-bn-issues').getContext('2d');
+  new Chart(bnIssCtx, {
+    type: 'bar',
+    data: {
+      labels: issueLabels,
+      datasets: [{ data: issueCounts,
+        backgroundColor: issueColors, borderRadius: 4 }]
+    },
+    options: {
+      indexAxis: 'y',
+      plugins: { legend: { display:false } },
+      scales: {
+        x: { ticks:{color:'#6c7086'}, grid:{color:'#3a3a5c'} },
+        y: { ticks:{color:'#cdd6f4', font:{size:11}}, grid:{display:false} }
+      },
+      responsive:true, maintainAspectRatio:true
+    }
+  });
+
+  // Sessions by Bottleneck Score bar chart
+  const scored = DATA.sessions
+    .filter(s => s.bottleneck_report)
+    .sort((a,b) => (b.bottleneck_report.bottleneck_score||0) - (a.bottleneck_report.bottleneck_score||0))
+    .slice(0, 10);
+
+  const bnScCtx = document.getElementById('chart-bn-scores').getContext('2d');
+  new Chart(bnScCtx, {
+    type: 'bar',
+    data: {
+      labels: scored.map(s => fmt.sid(s.session_id)),
+      datasets: [{
+        label: 'Score',
+        data: scored.map(s => s.bottleneck_report.bottleneck_score),
+        backgroundColor: scored.map(s => {
+          const sc = s.bottleneck_report.bottleneck_score;
+          return sc >= 70 ? '#f38ba8' : sc >= 40 ? '#fab387' : '#a6e3a1';
+        }),
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      plugins: { legend: { display:false } },
+      scales: {
+        x: { ticks:{color:'#cdd6f4',font:{size:11}}, grid:{display:false} },
+        y: { ticks:{color:'#6c7086'}, grid:{color:'#3a3a5c'}, max:100 }
+      },
+      responsive:true, maintainAspectRatio:true
+    }
+  });
+}
+
 // ── Timeline ────────────────────────────────────────────────────────────────
 
 function renderTimeline() {
@@ -453,6 +601,70 @@ function anomalyChip(a) {
   </span>`;
 }
 
+function bnScoreClass(score) {
+  return score >= 70 ? 'bn-high' : score >= 40 ? 'bn-medium' : 'bn-low';
+}
+
+function renderBottleneckReport(sess) {
+  const br = sess.bottleneck_report;
+  if (!br || br.bottleneck_score === 0) return '';
+
+  const issueTypes = ['tool_loop','large_tool_result','token_spike','repeated_file_read'];
+  const typeLabels = { tool_loop:'Tool Loop', large_tool_result:'Large Tool Result',
+    token_spike:'Token Spike', repeated_file_read:'Repeated File Read' };
+  const counts = br.issue_counts || {};
+
+  // Issue count groups
+  const groups = issueTypes
+    .filter(t => counts[t])
+    .map(t => {
+      const issues = (br.issues||[]).filter(i => i.type === t).slice(0, 5);
+      const details = issues.map(i =>
+        `<div class="bn-detail">${i.detail}</div>`
+      ).join('');
+      return `<details class="bn-issue-group">
+        <summary><span class="bn-issue-type ${t}">${typeLabels[t]}</span> x${counts[t]} issues</summary>
+        ${details}
+      </details>`;
+    }).join('');
+
+  // Top issues (sorted by severity priority)
+  const severityOrder = { tool_loop:0, large_tool_result:1, token_spike:2, repeated_file_read:3 };
+  const topIssues = (br.issues||[])
+    .slice()
+    .sort((a,b) => (severityOrder[a.type]||9) - (severityOrder[b.type]||9))
+    .slice(0, 5);
+  const topHtml = topIssues.length ? `
+    <div class="bn-top-issues">
+      <div class="bn-top-label">Top Issues</div>
+      <ul>${topIssues.map(i => `<li>${i.detail}</li>`).join('')}</ul>
+    </div>` : '';
+
+  const uid = sess.session_id.substring(0,8);
+  return `
+  <div class="bn-report">
+    <div class="bn-report-header" onclick="toggleBnReport(this)">
+      <span class="bn-arrow">▶</span>
+      <span>Bottleneck Report</span>
+      <span style="margin-left:auto;font-size:11px;color:var(--${br.bottleneck_score>=70?'red':br.bottleneck_score>=40?'orange':'muted'})">
+        score: ${br.bottleneck_score}/100
+      </span>
+    </div>
+    <div class="bn-report-body" id="bn-body-${uid}">
+      ${groups}
+      ${topHtml}
+    </div>
+  </div>`;
+}
+
+function toggleBnReport(header) {
+  const body = header.nextElementSibling;
+  const arrow = header.querySelector('.bn-arrow');
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  if (arrow) arrow.classList.toggle('open', !isOpen);
+}
+
 function renderTree() {
   const sessions = DATA.sessions.filter(s => !activeSession || s.session_id === activeSession);
 
@@ -460,13 +672,19 @@ function renderTree() {
     const sev = severity(sess);
     const anomalies = (sess.anomalies||[]).map(anomalyChip).join(' ');
 
+    // Bottleneck score badge
+    const br = sess.bottleneck_report;
+    const bnBadge = br && br.bottleneck_score > 0
+      ? `<span class="bn-score-badge ${bnScoreClass(br.bottleneck_score)}">B:${br.bottleneck_score}</span>`
+      : '';
+
     const messages = (sess.messages || []).filter(m => m.role === 'user').map((m,i) => {
       const toolList = [...new Set(m.tools||[])];
       const toolChips = toolList.map(t=>`<span class="tool-chip">${t}</span>`).join(' ');
       return `
         <div class="tree-node" style="background:var(--bg)">
           <div class="tree-header" onclick="toggleNode(this)">
-            <span style="font-size:12px">▸ Msg #${i+1}: ${m.text_preview ? m.text_preview.substring(0,60)+'…' : '(empty)'}</span>
+            <span style="font-size:12px">Msg #${i+1}: ${m.text_preview ? m.text_preview.substring(0,60)+'…' : '(empty)'}</span>
             <span class="val">${toolList.length} tools</span>
             <span class="val">${fmt.tokens(m.input_tokens + m.output_tokens)}</span>
             <span class="val">${fmt.cost(m.cost)}</span>
@@ -484,16 +702,20 @@ function renderTree() {
         </div>`;
     }).join('');
 
+    // Bottleneck report section
+    const bnReport = renderBottleneckReport(sess);
+
     return `
     <div class="tree-node">
       <div class="tree-header" onclick="toggleNode(this)">
-        <span style="font-weight:600">${fmt.sid(sess.session_id)} &nbsp; ${anomalies}</span>
+        <span style="font-weight:600">${fmt.sid(sess.session_id)} &nbsp; ${anomalies} ${bnBadge}</span>
         <span class="val">${sess.message_count} msgs</span>
         <span class="val">${fmt.tokens(sess.total_tokens)}</span>
         <span class="val badge ${sev}">${fmt.cost(sess.total_cost)}</span>
         <span class="tree-expand">▶</span>
       </div>
       <div class="tree-children">
+        ${bnReport}
         ${messages || '<div style="color:var(--muted);padding:8px">No messages</div>'}
       </div>
     </div>`;
@@ -540,12 +762,51 @@ function saveSettings() {
   alert('Settings applied.\nTo persist: save ~/.claude/analytics-config.json manually or re-run engine.');
 }
 
+// ── Reviews ──────────────────────────────────────────────────────────────────
+
+function renderReviews() {
+  const reviews = (DATA && DATA.reviews) || [];
+  const container = document.getElementById('reviews-list');
+  if (!reviews.length) {
+    container.innerHTML = `
+      <div class="empty">
+        <p style="font-size:18px;margin-bottom:12px">📋 No reviews yet</p>
+        <p>Use <code>/review</code> in Claude Code to create a session review</p>
+        <p style="margin-top:8px;font-size:12px">Or: <code>make review SESSION=&lt;session-id&gt;</code></p>
+      </div>`;
+    return;
+  }
+  container.innerHTML = reviews.map((r, i) => {
+    const date = new Date(r.mtime * 1000).toLocaleDateString('ja-JP',
+      {year:'numeric', month:'2-digit', day:'2-digit'});
+    const mdHtml = (typeof marked !== 'undefined')
+      ? marked.parse(r.content)
+      : `<pre style="white-space:pre-wrap">${r.content}</pre>`;
+    return `
+    <div class="review-card">
+      <div class="review-card-header" onclick="toggleReview(this)">
+        <span class="review-card-title">📋 ${r.filename.replace('.md', '')}</span>
+        <span class="review-card-date">${date}</span>
+      </div>
+      <div class="review-card-body" id="review-body-${i}">
+        <div class="review-content">${mdHtml}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleReview(header) {
+  header.nextElementSibling.classList.toggle('open');
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 function render() {
   renderOverview();
+  renderBottleneckOverview();
   renderTimeline();
   renderTree();
+  renderReviews();
 }
 
 loadData();

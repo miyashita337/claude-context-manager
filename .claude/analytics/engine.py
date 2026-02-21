@@ -6,6 +6,7 @@ Analyzes ~/.claude/projects/*.jsonl to generate dashboard data
 
 import json
 import os
+import re
 import sys
 import argparse
 from pathlib import Path
@@ -129,6 +130,8 @@ def analyze_session(events, session_id):
     }
     DEFAULT_PRICE = {"input": 3.0, "output": 15.0}
 
+    seen_assistant_ids = set()
+
     for event in events:
         etype = event.get("type")
 
@@ -163,38 +166,50 @@ def analyze_session(events, session_id):
             session_end = ts
 
             msg = event.get("message", {})
-            usage = msg.get("usage", {})
-            model = msg.get("model", "")
+            msg_id = msg.get("id", "")
 
-            inp = usage.get("input_tokens", 0)
-            out = usage.get("output_tokens", 0)
-            cc  = usage.get("cache_creation_input_tokens", 0)
-            cr  = usage.get("cache_read_input_tokens", 0)
+            # Dedup: count tokens only on first occurrence of each message id.
+            # tool_use items appear on duplicate events, so always extract those.
+            is_first = True
+            if msg_id:
+                if msg_id in seen_assistant_ids:
+                    is_first = False
+                else:
+                    seen_assistant_ids.add(msg_id)
 
-            total_input += inp
-            total_output += out
-            total_cache_create += cc
-            total_cache_read += cr
+            # Token counting (first occurrence only to avoid triple-counting)
+            if is_first:
+                usage = msg.get("usage", {})
+                model = msg.get("model", "")
 
-            # Cost calculation
-            price = MODEL_PRICES.get(model, DEFAULT_PRICE)
-            cost = (inp * price["input"] + out * price["output"]) / 1_000_000
+                inp = usage.get("input_tokens", 0)
+                out = usage.get("output_tokens", 0)
+                cc  = usage.get("cache_creation_input_tokens", 0)
+                cr  = usage.get("cache_read_input_tokens", 0)
 
-            # Extract tool_use from content
-            tools_used = []
+                total_input += inp
+                total_output += out
+                total_cache_create += cc
+                total_cache_read += cr
+
+                # Cost calculation
+                price = MODEL_PRICES.get(model, DEFAULT_PRICE)
+                cost = (inp * price["input"] + out * price["output"]) / 1_000_000
+
+                if current_msg:
+                    current_msg["input_tokens"] += inp
+                    current_msg["output_tokens"] += out
+                    current_msg["cost"] += cost
+
+            # Extract tool_use from content (all occurrences - tools appear on duplicates)
             content = msg.get("content", [])
             if isinstance(content, list):
                 for item in content:
                     if isinstance(item, dict) and item.get("type") == "tool_use":
                         tool_name = item.get("name", "unknown")
-                        tools_used.append(tool_name)
                         tool_counts[tool_name] += 1
-
-            if current_msg:
-                current_msg["input_tokens"] += inp
-                current_msg["output_tokens"] += out
-                current_msg["cost"] += cost
-                current_msg["tools"].extend(tools_used)
+                        if current_msg:
+                            current_msg["tools"].append(tool_name)
 
     # Session duration
     duration_minutes = 0.0
@@ -274,6 +289,276 @@ def detect_anomalies(session, config):
     return anomalies
 
 
+# ── Bottleneck Analysis ───────────────────────────────────────────────────
+
+_BASH_FILE_RE = re.compile(r'(?:cat|head|tail|less|more)\s+["\']?(/[^\s"\'|>]+)')
+
+
+def analyze_bottlenecks(raw_events):
+    """
+    Fact-based bottleneck scan of raw JSONL events.
+    Every reported issue includes concrete evidence: message index, measured
+    char/token counts, and file paths extracted from actual event data.
+
+    Returns bottleneck_report dict with:
+    - bottleneck_score: 0-100 (higher = more waste)
+    - issues: list of detected problems with message indices and measured values
+    - issue_counts: breakdown by issue type
+    - top_wasteful_messages: top 5 by estimated token waste
+    """
+    issues = []
+    msg_index = -1
+    # Track file access across Read, Edit, Write AND Bash cat/head/tail
+    file_access_counts = defaultdict(list)  # file_path -> [msg_indices]
+    tool_sequence = []  # (tool_name, msg_index) for consecutive detection
+    # Full token count: input + cache_read + cache_create (= real context size)
+    per_msg_full_tokens = []  # (msg_index, full_tokens, input, cache_read, cache_create)
+    per_msg_waste = defaultdict(int)  # msg_index -> estimated waste tokens
+    seen_assistant_ids = set()
+
+    for event in raw_events:
+        etype = event.get("type")
+
+        if etype == "user":
+            msg_index += 1
+            # --- Large tool result detection ---
+            msg_content = event.get("message", {}).get("content", "")
+            if isinstance(msg_content, list):
+                for item in msg_content:
+                    if not isinstance(item, dict):
+                        continue
+                    if item.get("type") == "tool_result":
+                        content = item.get("content", "")
+                        if isinstance(content, list):
+                            text_len = sum(
+                                len(c.get("text", ""))
+                                for c in content
+                                if isinstance(c, dict)
+                            )
+                        elif isinstance(content, str):
+                            text_len = len(content)
+                        else:
+                            text_len = 0
+                        if text_len > 5000:
+                            # Extract a preview for evidence
+                            preview = ""
+                            if isinstance(content, str):
+                                preview = content[:120].replace("\n", " ")
+                            elif isinstance(content, list):
+                                for c in content:
+                                    if isinstance(c, dict) and c.get("text"):
+                                        preview = c["text"][:120].replace("\n", " ")
+                                        break
+                            issues.append({
+                                "type": "large_tool_result",
+                                "msg_index": msg_index,
+                                "chars": text_len,
+                                "detail": f"Msg #{msg_index}: tool result {text_len:,} chars",
+                                "preview": preview,
+                                "value": text_len,
+                            })
+                            per_msg_waste[msg_index] += text_len // 4
+
+        elif etype == "assistant":
+            msg = event.get("message", {})
+            msg_id = msg.get("id", "")
+            is_first_for_id = True
+            if msg_id:
+                if msg_id in seen_assistant_ids:
+                    is_first_for_id = False  # skip token counting, but still track tools
+                else:
+                    seen_assistant_ids.add(msg_id)
+
+            usage = msg.get("usage", {}) if is_first_for_id else {}
+            inp = usage.get("input_tokens", 0)
+            cr = usage.get("cache_read_input_tokens", 0)
+            cc = usage.get("cache_creation_input_tokens", 0)
+            full = inp + cr + cc
+            if full > 0:
+                per_msg_full_tokens.append((msg_index, full, inp, cr, cc))
+
+            # Track tool sequence and file access
+            content = msg.get("content", [])
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "tool_use":
+                        tool_name = item.get("name", "unknown")
+                        tool_input = item.get("input", {})
+                        tool_sequence.append((tool_name, msg_index))
+
+                        # File access via Read/Edit/Write
+                        file_path = tool_input.get("file_path", "")
+                        if file_path and tool_name in ("Read", "Edit", "Write"):
+                            file_access_counts[file_path].append(msg_index)
+
+                        # File access via Bash cat/head/tail
+                        if tool_name == "Bash":
+                            cmd = tool_input.get("command", "")
+                            for match in _BASH_FILE_RE.findall(cmd):
+                                file_access_counts[match].append(msg_index)
+
+    # --- Repeated file access (3+ times same file in session) ---
+    for fpath, indices in file_access_counts.items():
+        if len(indices) >= 3:
+            short_name = fpath.rsplit("/", 1)[-1] if "/" in fpath else fpath
+            issues.append({
+                "type": "repeated_file_read",
+                "msg_indices": indices,
+                "file": fpath,
+                "short_name": short_name,
+                "access_count": len(indices),
+                "detail": f"{short_name} accessed {len(indices)}x at msgs {indices}",
+                "value": len(indices),
+            })
+            for idx in indices[2:]:
+                per_msg_waste[idx] += 500
+
+    # --- Token spikes (full context > 1.5x session avg AND > 50K) ---
+    if per_msg_full_tokens:
+        avg_full = sum(t[1] for t in per_msg_full_tokens) / len(per_msg_full_tokens)
+        threshold = avg_full * 1.5
+        for idx, full, inp, cr, cc in per_msg_full_tokens:
+            if full > threshold and full > 50000:
+                excess = full - int(avg_full)
+                issues.append({
+                    "type": "token_spike",
+                    "msg_index": idx,
+                    "full_tokens": full,
+                    "input_tokens": inp,
+                    "cache_read": cr,
+                    "cache_create": cc,
+                    "session_avg": int(avg_full),
+                    "detail": f"Msg #{idx}: {full:,} tokens (avg {int(avg_full):,}, {full/avg_full:.1f}x)",
+                    "value": full,
+                })
+                per_msg_waste[idx] += excess
+
+    # --- Tool loops (same tool 3+ consecutive times) ---
+    if tool_sequence:
+        run_start = 0
+        for i in range(1, len(tool_sequence)):
+            if tool_sequence[i][0] != tool_sequence[run_start][0]:
+                _check_tool_run(tool_sequence, run_start, i, issues, per_msg_waste)
+                run_start = i
+        _check_tool_run(tool_sequence, run_start, len(tool_sequence), issues, per_msg_waste)
+
+    # --- Bottleneck score ---
+    # Weighted by actual measured impact, not just count
+    score = 0.0
+    for issue in issues:
+        itype = issue["type"]
+        if itype == "large_tool_result":
+            # Scale by size: 78K chars = ~20 points, 5K = ~1 point
+            score += min(20, issue["chars"] / 4000)
+        elif itype == "repeated_file_read":
+            score += issue["access_count"] * 2
+        elif itype == "token_spike":
+            score += min(15, (issue["full_tokens"] - issue["session_avg"]) / 10000)
+        elif itype == "tool_loop":
+            score += issue["value"] * 1.5
+    score = min(100, int(score))
+
+    # --- Top wasteful messages ---
+    top_wasteful = sorted(per_msg_waste.items(), key=lambda x: -x[1])[:5]
+
+    # Build issue_counts
+    issue_types = set(i["type"] for i in issues)
+    issue_counts = {t: sum(1 for i in issues if i["type"] == t) for t in issue_types}
+
+    return {
+        "bottleneck_score": score,
+        "issues": issues,
+        "issue_counts": issue_counts,
+        "top_wasteful_messages": [
+            {"msg_index": idx, "estimated_waste_tokens": waste}
+            for idx, waste in top_wasteful
+        ],
+    }
+
+
+def _check_tool_run(tool_sequence, start, end, issues, per_msg_waste):
+    """Helper: detect a consecutive tool run of length >= 3."""
+    run_len = end - start
+    if run_len >= 3:
+        tool_name = tool_sequence[start][0]
+        affected = sorted(set(tool_sequence[j][1] for j in range(start, end)))
+        issues.append({
+            "type": "tool_loop",
+            "msg_indices": affected,
+            "tool": tool_name,
+            "consecutive_count": run_len,
+            "detail": f"{tool_name} used {run_len} consecutive times (msgs {affected})",
+            "value": run_len,
+        })
+        for idx in affected:
+            per_msg_waste[idx] += 200 * run_len
+
+
+def compute_cache_patterns(raw_events):
+    """
+    Fact-based cache usage analysis from per-message token data.
+    Returns measured values:
+    - first_turn_overhead: cache_creation_input_tokens on first assistant message
+    - total_cache_create: total cache_creation tokens across session
+    - total_cache_read: total cache_read tokens across session
+    - total_input: total non-cached input tokens
+    - avg_cache_efficiency: cache_read / (cache_read + input_tokens) ratio
+    - sessions_with_poor_cache: 1 if efficiency < 0.5 (with meaningful data), else 0
+    - per_turn_detail: first 5 turns with token breakdown for evidence
+    """
+    seen_ids = set()
+    first_turn_overhead = 0
+    total_cache_read = 0
+    total_input = 0
+    total_cache_create = 0
+    is_first_assistant = True
+    per_turn_detail = []
+
+    for event in raw_events:
+        if event.get("type") != "assistant":
+            continue
+
+        msg = event.get("message", {})
+        msg_id = msg.get("id", "")
+        if msg_id:
+            if msg_id in seen_ids:
+                continue
+            seen_ids.add(msg_id)
+
+        usage = msg.get("usage", {})
+        cc = usage.get("cache_creation_input_tokens", 0)
+        cr = usage.get("cache_read_input_tokens", 0)
+        inp = usage.get("input_tokens", 0)
+        out = usage.get("output_tokens", 0)
+
+        if is_first_assistant:
+            first_turn_overhead = cc
+            is_first_assistant = False
+
+        total_cache_read += cr
+        total_input += inp
+        total_cache_create += cc
+
+        if len(per_turn_detail) < 5:
+            per_turn_detail.append({
+                "input": inp, "cache_read": cr, "cache_create": cc, "output": out,
+            })
+
+    denominator = total_cache_read + total_input
+    avg_efficiency = (total_cache_read / denominator) if denominator > 0 else 0.0
+    poor_cache = 1 if (avg_efficiency < 0.5 and denominator > 1000) else 0
+
+    return {
+        "first_turn_overhead": first_turn_overhead,
+        "total_cache_create": total_cache_create,
+        "total_cache_read": total_cache_read,
+        "total_input": total_input,
+        "avg_cache_efficiency": round(avg_efficiency, 4),
+        "sessions_with_poor_cache": poor_cache,
+        "per_turn_detail": per_turn_detail,
+    }
+
+
 # ── Summary ────────────────────────────────────────────────────────────────
 
 def build_summary(sessions, config):
@@ -296,6 +581,36 @@ def build_summary(sessions, config):
     # Heaviest sessions
     heavy = sorted(sessions, key=lambda s: s["total_cost"], reverse=True)[:5]
 
+    # Aggregate cache patterns across sessions
+    cache_efficiencies = []
+    total_first_turn = 0
+    poor_cache_count = 0
+    for s in sessions:
+        cp = s.get("cache_patterns", {})
+        total_first_turn += cp.get("first_turn_overhead", 0)
+        eff = cp.get("avg_cache_efficiency", 0)
+        if eff > 0 or cp.get("sessions_with_poor_cache", 0):
+            cache_efficiencies.append(eff)
+        poor_cache_count += cp.get("sessions_with_poor_cache", 0)
+
+    avg_cache_eff = (
+        sum(cache_efficiencies) / len(cache_efficiencies)
+        if cache_efficiencies else 0.0
+    )
+
+    # Aggregate bottleneck stats
+    total_bottleneck_score = 0
+    all_issue_types = defaultdict(int)
+    for s in sessions:
+        br = s.get("bottleneck_report", {})
+        total_bottleneck_score += br.get("bottleneck_score", 0)
+        for itype, cnt in br.get("issue_counts", {}).items():
+            all_issue_types[itype] += cnt
+
+    avg_bottleneck = (
+        total_bottleneck_score / len(sessions) if sessions else 0
+    )
+
     return {
         "session_count": len(sessions),
         "total_tokens": total_tokens,
@@ -313,10 +628,21 @@ def build_summary(sessions, config):
                 "duration_minutes": s["duration_minutes"],
                 "start": s["start"],
                 "anomaly_count": len(s.get("anomalies", [])),
+                "bottleneck_score": s.get("bottleneck_report", {}).get("bottleneck_score", 0),
             }
             for s in heavy
         ],
         "thresholds": config["thresholds"],
+        "cache_patterns": {
+            "avg_first_turn_overhead": total_first_turn // max(len(sessions), 1),
+            "avg_cache_efficiency": round(avg_cache_eff, 4),
+            "sessions_with_poor_cache": poor_cache_count,
+        },
+        "bottleneck_summary": {
+            "avg_bottleneck_score": round(avg_bottleneck, 1),
+            "total_issues": sum(all_issue_types.values()),
+            "issue_breakdown": dict(all_issue_types),
+        },
     }
 
 
@@ -338,7 +664,26 @@ def generate_html_output(result, html_path):
     print(f"✅ Dashboard saved to {out}", file=sys.stderr)
 
 
-def run_analysis(project_dir=None, max_sessions=10, output_path=None, html_output_path=None, config=None):
+def load_reviews():
+    """Load review markdown files from ~/.claude/reviews/"""
+    reviews_dir = Path.home() / ".claude" / "reviews"
+    reviews = []
+    if not reviews_dir.exists():
+        return reviews
+    for md_file in sorted(reviews_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            content = md_file.read_text(encoding="utf-8")
+            reviews.append({
+                "filename": md_file.name,
+                "mtime": md_file.stat().st_mtime,
+                "content": content,
+            })
+        except Exception:
+            pass
+    return reviews
+
+
+def run_analysis(project_dir=None, max_sessions=10, output_path=None, html_output_path=None, config=None, session_id=None):
     if config is None:
         config = load_config()
 
@@ -348,11 +693,18 @@ def run_analysis(project_dir=None, max_sessions=10, output_path=None, html_outpu
         sys.exit(1)
 
     # Collect JSONL files, sorted by modification time (newest first)
-    jsonl_files = sorted(
+    all_jsonl = sorted(
         pdir.glob("*.jsonl"),
         key=lambda p: p.stat().st_mtime,
         reverse=True
-    )[:max_sessions]
+    )
+    if session_id:
+        jsonl_files = [f for f in all_jsonl if f.stem == session_id]
+        if not jsonl_files:
+            print(f"❌ Session {session_id} not found in {pdir}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        jsonl_files = all_jsonl[:max_sessions]
 
     if not jsonl_files:
         print(f"❌ No session files found in {pdir}", file=sys.stderr)
@@ -364,6 +716,8 @@ def run_analysis(project_dir=None, max_sessions=10, output_path=None, html_outpu
             events = load_session(path)
             session = analyze_session(events, path.stem)
             session["anomalies"] = detect_anomalies(session, config)
+            session["bottleneck_report"] = analyze_bottlenecks(events)
+            session["cache_patterns"] = compute_cache_patterns(events)
             sessions.append(session)
         except Exception as e:
             print(f"⚠️  Skipping {path.name}: {e}", file=sys.stderr)
@@ -376,6 +730,7 @@ def run_analysis(project_dir=None, max_sessions=10, output_path=None, html_outpu
         "config": config,
         "summary": summary,
         "sessions": sessions,
+        "reviews": load_reviews(),
     }
 
     if html_output_path:
@@ -398,6 +753,7 @@ if __name__ == "__main__":
     parser.add_argument("--sessions", type=int, default=10, help="Max sessions to analyze (default: 10)")
     parser.add_argument("--output", help="Output JSON path (default: stdout)")
     parser.add_argument("--html-output", help="Output self-contained HTML path (works with file://)")
+    parser.add_argument("--session-id", help="Analyze specific session ID only")
     parser.add_argument("--config-init", action="store_true", help="Initialize default config file")
     args = parser.parse_args()
 
@@ -411,4 +767,5 @@ if __name__ == "__main__":
         max_sessions=args.sessions,
         output_path=args.output,
         html_output_path=args.html_output,
+        session_id=args.session_id,
     )
