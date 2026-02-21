@@ -1,7 +1,7 @@
 # Claude Context Manager - Makefile
 # 便利なショートカットコマンド集
 
-.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch ccusage-report analytics analytics-update validate-analytics review review-latest review-list update-antipatterns install-topic-server start-topic-server stop-topic-server uninstall-topic-server status-topic-server
+.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch ci-auto-fix ccusage-report analytics analytics-update validate-analytics review review-latest review-list update-antipatterns install-topic-server start-topic-server stop-topic-server uninstall-topic-server status-topic-server
 
 # デフォルトターゲット: ヘルプを表示
 help:
@@ -42,7 +42,8 @@ help:
 	@echo "  make uninstall-topic-server - launchd から削除"
 	@echo ""
 	@echo "🔄 CI/CD:"
-	@echo "  make ci-watch PR=<n>  - PR #nのCI監視（自動リトライ）"
+	@echo "  make ci-watch PR=<n>     - PR #nのCI監視（表示のみ）"
+	@echo "  make ci-auto-fix PR=<n>  - PR #nのCI自動修正ループ（最大3回リトライ）"
 	@echo ""
 	@echo "📦 開発:"
 	@echo "  make install          - 全ての依存関係をインストール"
@@ -215,6 +216,21 @@ ci-watch:
 			exit 0; \
 		fi; \
 	done
+
+# CI自動修正ループ（手動実行用）
+ci-auto-fix:
+	@if [ -z "$(PR)" ]; then \
+		echo "❌ ERROR: PR number required"; \
+		echo "Usage: make ci-auto-fix PR=<number>"; \
+		exit 1; \
+	fi
+	@echo "🔄 Starting CI auto-fix loop for PR #$(PR)..."
+	@python3 src/hooks/ci_auto_fix.py $(PR) $(shell pwd) $(if $(MAX_RETRIES),$(MAX_RETRIES),3); \
+	case $$? in \
+		0) echo "✅ CI passed!" ;; \
+		1) echo "⛔ Max retries reached. Manual fix required." ;; \
+		2) echo "⛔ Commit/push failed. Check git status." ;; \
+	esac
 
 # Analytics ダッシュボード生成 + 自己診断 + ブラウザ起動
 analytics:

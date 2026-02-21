@@ -161,20 +161,24 @@ def main():
                                     try:
                                         with open(signal_file, 'w', encoding='utf-8') as f:
                                             json.dump(signal_data, f, indent=2)
-                                        additional_context += f" | 🚀 CI監視リクエスト送信 - PR #{pr_num} (エージェントが自動処理)"
 
-                                        # Auto-start ci-monitor agent in background
+                                        # Launch ci-auto-fix loop in background
                                         import subprocess
+                                        hooks_dir = Path(__file__).parent
                                         subprocess.Popen(
-                                            ["make", "ci-watch", f"PR={pr_num}"],
-                                            cwd=repo_root,
+                                            [
+                                                sys.executable,
+                                                str(hooks_dir / "ci_auto_fix.py"),
+                                                pr_num,
+                                                repo_root,
+                                            ],
                                             stdout=subprocess.DEVNULL,
                                             stderr=subprocess.DEVNULL,
                                             start_new_session=True
                                         )
-                                        additional_context += f" | 🤖 ci-monitorエージェント起動"
+                                        additional_context += f" | 🔄 CI自動修正ループ起動 - PR #{pr_num} (最大3回リトライ)"
                                     except Exception as e:
-                                        additional_context += f" | ⚠️ CI監視リクエスト失敗: {str(e)}"
+                                        additional_context += f" | ⚠️ CI自動修正起動失敗: {str(e)}"
                 except Exception as e:
                     # Don't fail the hook if CI auto-watch fails
                     pass
