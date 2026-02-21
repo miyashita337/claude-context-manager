@@ -170,6 +170,16 @@ def sanitize_stdin(stdin_content: str, hook_name: str) -> str:
     return stdin_content
 
 
+def _p2_debug_log(msg: str) -> None:
+    """Write a debug message to hook-debug.log (best-effort)."""
+    debug_log = Path.home() / '.claude' / 'hook-debug.log'
+    try:
+        with open(debug_log, 'a', encoding='utf-8') as f:
+            f.write(f"\n=== P2 Debug ===\n{msg}\n")
+    except Exception:
+        pass
+
+
 def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
     """P2: LLM-based judgment for gray zone cases (Haiku API).
 
@@ -242,6 +252,7 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
     except urllib.error.HTTPError as e:
         return {"decision": "warn", "reason": f"p2_api_error ({e.code})"}
     except Exception as e:
+        _p2_debug_log(f"urlopen raised {type(e).__name__}: {e}")
         return {"decision": "warn", "reason": f"p2_error: {str(e)[:50]}"}
 
     if not resp_body or not resp_body.strip():
@@ -264,7 +275,12 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
         return {"decision": "warn", "reason": f"p2_llm: {result.get('reason', 'off-topic')}"}
 
     except Exception as e:
-        # JSON parse failure → preserve P1 WARN (conservative fallback)
+        import traceback
+        _p2_debug_log(
+            f"inner parse error {type(e).__name__}: {e}\n"
+            f"resp_body[:200]={repr(resp_body[:200])}\n"
+            f"traceback:\n{traceback.format_exc()}"
+        )
         return {"decision": "warn", "reason": f"p2_error: {str(e)[:50]}"}
 
 
