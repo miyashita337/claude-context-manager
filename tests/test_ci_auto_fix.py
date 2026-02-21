@@ -417,3 +417,42 @@ class TestRunCiAutoFix:
 
         assert log_path.exists()
         assert "PR" in log_path.read_text() or fake_pr_num in log_path.read_text()
+
+    def test_no_fix_possible_returns_1(self, fake_pr_num, fake_repo_root):
+        """ruff も claude も変更なし → exit 2 ではなく 1（修正不可）を返す。"""
+        from ci_auto_fix import run_ci_auto_fix
+
+        failed_check = [{"bucket": "fail", "name": "lint"}]
+
+        with (
+            patch("ci_auto_fix.time.sleep"),
+            patch("ci_auto_fix.get_ci_status", return_value=([], failed_check)),
+            patch("ci_auto_fix.get_failure_logs", return_value="logic error"),
+            patch("ci_auto_fix.attempt_lint_fix", return_value=False),
+            patch("ci_auto_fix.attempt_claude_fix"),
+            patch("ci_auto_fix._has_changes", return_value=False),
+        ):
+            result = run_ci_auto_fix(fake_pr_num, fake_repo_root, max_retries=3)
+
+        assert result == 1
+
+    def test_max_retries_display_no_overflow(self, fake_pr_num, fake_repo_root, tmp_path):
+        """max retries 到達時にログが '4/3' などの overflow 表示にならない。"""
+        from ci_auto_fix import run_ci_auto_fix
+
+        log_path = tmp_path / "ci-watch.log"
+        failed_check = [{"bucket": "fail", "name": "lint"}]
+
+        with (
+            patch("ci_auto_fix.time.sleep"),
+            patch("ci_auto_fix.get_ci_status", return_value=([], failed_check)),
+            patch("ci_auto_fix.get_failure_logs", return_value="err"),
+            patch("ci_auto_fix.attempt_lint_fix", return_value=True),
+            patch("ci_auto_fix.commit_and_push", return_value=True),
+            patch("ci_auto_fix.LOG_FILE", log_path),
+        ):
+            run_ci_auto_fix(fake_pr_num, fake_repo_root, max_retries=3)
+
+        log_content = log_path.read_text()
+        # "4/3" のような max を超えた表示が出ていないこと
+        assert "4/3" not in log_content

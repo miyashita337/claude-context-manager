@@ -58,6 +58,12 @@ def _log(msg: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _has_changes(repo_root: str) -> bool:
+    """Return True if the working tree has any staged or unstaged changes."""
+    result = run("git status --porcelain", cwd=repo_root)
+    return bool(result.stdout.strip())
+
+
 def get_ci_status(pr_num: str):
     """Return (pending, failed) check lists, or (None, None) on error.
 
@@ -225,13 +231,13 @@ def run_ci_auto_fix(pr_num: str, repo_root: str, max_retries: int = 3) -> int:
             return 0
 
         # ── 4. Max retries guard ─────────────────────────────────────────
+        if attempt >= max_retries:
+            _log(f"⛔ CI still failing after {max_retries} fix attempts. Manual fix required.")
+            return 1
         _log(
             f"❌ {len(failed)} CI check(s) failed "
             f"(attempt {attempt + 1}/{max_retries})"
         )
-        if attempt >= max_retries:
-            _log(f"⛔ Max retries ({max_retries}) reached. Manual fix required.")
-            return 1
 
         # ── 5. Attempt auto-fix ──────────────────────────────────────────
         logs = get_failure_logs(pr_num)
@@ -240,6 +246,9 @@ def run_ci_auto_fix(pr_num: str, repo_root: str, max_retries: int = 3) -> int:
         if not lint_fixed:
             _log("Lint fix made no changes, trying claude fix...")
             attempt_claude_fix(logs, repo_root)
+            if not _has_changes(repo_root):
+                _log("⚠️ Auto-fix made no changes. Cannot fix automatically. Manual fix required.")
+                return 1
 
         # ── 6. Commit + push ─────────────────────────────────────────────
         success = commit_and_push(repo_root, attempt + 1)
