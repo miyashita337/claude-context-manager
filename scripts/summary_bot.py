@@ -19,7 +19,7 @@ def get_event_data() -> dict:
 
 
 def already_has_summary(body: str) -> bool:
-    return MARKER_START in (body or "")
+    return (body or "").startswith(MARKER_START)
 
 
 def call_claude(title: str, body: str, event_type: str) -> str:
