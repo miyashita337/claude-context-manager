@@ -202,6 +202,33 @@ class TestQueryLlmP2:
 
         assert result["decision"] == "pass"
 
+    def test_empty_response_body_returns_warn(self):
+        """200 status but empty body (e.g. network truncation) → warn, not crash."""
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b""
+        conn = MagicMock()
+        conn.getresponse.return_value = resp
+
+        with patch("http.client.HTTPSConnection", return_value=conn):
+            with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+                result = ups._query_llm_p2("some prompt", [])
+
+        assert result["decision"] == "warn"
+        assert result["reason"] == "p2_empty_body"
+
+    def test_empty_text_field_in_content_returns_warn(self):
+        """LLM returns content with empty text (model output empty) → warn, not crash."""
+        conn = _mock_api_response(
+            200, {"content": [{"type": "text", "text": "   "}]}
+        )
+        with patch("http.client.HTTPSConnection", return_value=conn):
+            with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+                result = ups._query_llm_p2("some prompt", [])
+
+        assert result["decision"] == "warn"
+        assert result["reason"] == "p2_empty_text"
+
 
 # =============================================================================
 # Integration tests: _run_detection() pipeline trigger conditions

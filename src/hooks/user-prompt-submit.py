@@ -244,12 +244,18 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
         if resp_status != 200:
             return {"decision": "warn", "reason": f"p2_api_error ({resp_status})"}
 
+        if not resp_body or not resp_body.strip():
+            return {"decision": "warn", "reason": "p2_empty_body"}
+
         data = json.loads(resp_body)
         content_list = data.get("content", [])
         if not content_list:
             return {"decision": "warn", "reason": "p2_empty_response"}
 
         text = content_list[0].get("text", "")
+        if not text.strip():
+            return {"decision": "warn", "reason": "p2_empty_text"}
+
         result = json.loads(text.strip())
 
         if result.get("ok", True):  # missing 'ok' → default on-topic (conservative)
