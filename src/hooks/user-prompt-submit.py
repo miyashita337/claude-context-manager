@@ -237,7 +237,7 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=5) as resp:  # nosemgrep: dynamic-urllib-use-detected
             resp_body = resp.read()
     except urllib.error.HTTPError as e:
         return {"decision": "warn", "reason": f"p2_api_error ({e.code})"}
