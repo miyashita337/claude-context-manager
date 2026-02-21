@@ -379,6 +379,24 @@ def main():
                     f"⚠️ [話題逸脱の可能性] 現在のセッションのトピックと関連が薄いかもしれません"
                     f" ({reason})。別トピックの場合は新しいセッションの開始を検討してください。"
                 )
+                # notify.sh でOS通知を発火（バックグラウンド、ブロックしない）
+                try:
+                    import subprocess
+                    notify_script = Path.home() / '.claude' / 'notify.sh'
+                    if notify_script.exists():
+                        payload = json.dumps({
+                            "notification_type": "topic_deviation",
+                            "message": "現在のトピックと関連が薄い可能性があります",
+                        })
+                        subprocess.Popen(
+                            ['bash', str(notify_script)],
+                            input=payload.encode(),
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            start_new_session=True,
+                        )
+                except Exception:
+                    pass  # 通知失敗はユーザーをブロックしない
         except Exception:
             pass  # Detection failure must never block user
 
