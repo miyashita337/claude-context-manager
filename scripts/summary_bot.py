@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Summary Bot: Issue/PR作成時にポエム調サマリーをbody先頭に自動追記する
+Summary Bot: Issue/PR作成・更新時にポエム調サマリーをbody先頭に自動追記・更新する
 """
 import json
 import os
@@ -18,8 +18,21 @@ def get_event_data() -> dict:
         return json.load(f)
 
 
-def already_has_summary(body: str) -> bool:
-    return (body or "").startswith(MARKER_START)
+def is_bot_edit(event_data: dict) -> bool:
+    """自分自身（github-actions[bot]）の編集による無限ループを防ぐ"""
+    sender = event_data.get("sender", {}).get("login", "")
+    return sender == "github-actions[bot]"
+
+
+def strip_existing_summary(body: str) -> str:
+    """既存のサマリーブロックを除去して元のbodyを返す"""
+    if MARKER_START not in body:
+        return body
+    end_idx = body.find(MARKER_END)
+    if end_idx == -1:
+        return body
+    after_end = body[end_idx + len(MARKER_END):]
+    return after_end.lstrip("\n")
 
 
 def call_claude(title: str, body: str, event_type: str) -> str:
@@ -73,15 +86,16 @@ def main() -> None:
     token = os.environ["GITHUB_TOKEN"]
     event_data = get_event_data()
 
+    if is_bot_edit(event_data):
+        print("github-actions[bot] による編集のためスキップ（無限ループ防止）")
+        return
+
     if event_name == "issues":
         issue = event_data["issue"]
         number = issue["number"]
         title = issue["title"]
-        body = issue.get("body") or ""
-
-        if already_has_summary(body):
-            print(f"Issue #{number}: サマリー済みのためスキップ")
-            return
+        raw_body = issue.get("body") or ""
+        body = strip_existing_summary(raw_body)
 
         print(f"Issue #{number} のサマリーを生成中...")
         poem = call_claude(title, body, event_name)
@@ -93,11 +107,8 @@ def main() -> None:
         pr = event_data["pull_request"]
         number = pr["number"]
         title = pr["title"]
-        body = pr.get("body") or ""
-
-        if already_has_summary(body):
-            print(f"PR #{number}: サマリー済みのためスキップ")
-            return
+        raw_body = pr.get("body") or ""
+        body = strip_existing_summary(raw_body)
 
         print(f"PR #{number} のサマリーを生成中...")
         poem = call_claude(title, body, event_name)

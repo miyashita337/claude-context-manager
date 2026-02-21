@@ -2,9 +2,9 @@ name: Summary Bot
 
 on:
   issues:
-    types: [opened]
+    types: [opened, edited]
   pull_request:
-    types: [opened]
+    types: [opened, edited]
 
 permissions:
   issues: write
