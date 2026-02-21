@@ -1,6 +1,14 @@
 import * as dotenv from 'dotenv';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// 1. mcp-chatgpt-server/.env を優先ロード
+dotenv.config({ path: resolve(__dirname, '../.env') });
+// 2. プロジェクトルートの .env をフォールバックとしてロード（上書きしない）
+dotenv.config({ path: resolve(__dirname, '../../.env') });
 
 export type ModelProvider = 'openai' | 'gemini';
 

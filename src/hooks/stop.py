@@ -9,6 +9,10 @@ from pathlib import Path
 # Add shared directory to Python path
 sys.path.insert(0, str(Path(__file__).parent / 'shared'))
 
+_PROJECT_ROOT = Path(__file__).parent.parent.parent
+_ENGINE_PATH = _PROJECT_ROOT / ".claude" / "analytics" / "engine.py"
+_CACHE_DIR = Path.home() / ".claude" / "reviews" / ".cache"
+
 
 def sanitize_stdin(stdin_content: str, hook_name: str) -> str:
     """Remove non-JSON text from stdin before the first '{' or '['.
@@ -95,6 +99,21 @@ def main():
                     f.write(f"Stderr: {result.stderr}\n")
         except:
             pass
+
+        # Tier 1: Fire-and-forget bottleneck pre-cache (non-blocking)
+        if session_id and session_id != 'unknown' and _ENGINE_PATH.exists():
+            try:
+                _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                output_path = _CACHE_DIR / f"{session_id}.json"
+                subprocess.Popen(
+                    [sys.executable, str(_ENGINE_PATH),
+                     "--session-id", session_id,
+                     "--output", str(output_path)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                pass  # Never block shutdown
 
         # Return success (exit 0 without JSON output)
         # Stop hooks that don't need to control Claude's behavior
