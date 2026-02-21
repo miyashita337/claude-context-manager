@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo '{\"cwd\": \"'\"$(pwd)\"'\", \"notification_type\": \"stop\"}' | bash \"$(git rev-parse --show-toplevel)/src/hooks/notify.sh\""
+            "command": "echo '{\"cwd\": \"'\"$(pwd)\"'\", \"notification_type\": \"stop\"}' | ~/.claude/notify.sh"
           }
         ]
       }
