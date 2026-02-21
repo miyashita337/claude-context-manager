@@ -50,8 +50,8 @@ _TECH = [
 ]
 
 
-def read_recent_user_messages(transcript_path: str, max_messages: int = 5) -> list[str]:
-    """Read last N user messages from session JSONL transcript."""
+def read_user_messages(transcript_path: str) -> list[str]:
+    """Read ALL user messages (chronological) from session JSONL transcript."""
     path = Path(transcript_path)
     if not path.exists():
         return []
@@ -72,7 +72,40 @@ def read_recent_user_messages(transcript_path: str, max_messages: int = 5) -> li
                         messages.append(content[:300])
     except Exception:
         pass
-    return messages[-max_messages:]
+    return messages
+
+
+def _query_topic_server(prompt: str, session_id: str, transcript_path: str) -> dict:
+    """P1: Query embedding server for similarity-based topic detection.
+
+    Returns:
+        {"available": True, "is_deviation": bool, "similarity": float, "reason": str}
+        {"available": False, "reason": str}  ← server not running → fall back to P0
+    """
+    import urllib.error
+    import urllib.request
+
+    all_messages = read_user_messages(transcript_path)
+    baseline_messages = all_messages[:3]   # first 3 = session intent
+    # current prompt not yet in transcript → no need to exclude last
+
+    payload = json.dumps({
+        "prompt": prompt,
+        "session_id": session_id,
+        "baseline_messages": baseline_messages,
+    }).encode()
+
+    req = urllib.request.Request(
+        "http://127.0.0.1:8765/similarity",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            data = json.loads(resp.read())
+            return {"available": True, **data}
+    except (urllib.error.URLError, OSError):
+        return {"available": False, "reason": "server_not_running"}
 
 
 def detect_topic_deviation(current_prompt: str, recent_messages: list[str]) -> dict:
@@ -174,17 +207,25 @@ def main():
         # Get session stats
         stats = logger.get_session_stats()
 
-        # --- P0: Topic deviation detection (Issue #28) ---
+        # --- Topic deviation detection: P1 (embedding) → P0 (rule) fallback ---
         additional_parts = [f"Logged user prompt. Session stats: {stats['total_tokens']} tokens"]
 
         try:
-            recent_messages = read_recent_user_messages(transcript_path)
-            detection = detect_topic_deviation(user_prompt, recent_messages)
-            if detection["is_deviation"]:
+            # P1: embedding server（日本語対応 similarity）
+            p1 = _query_topic_server(user_prompt, session_id, transcript_path)
+
+            if p1["available"]:
+                detection = p1
+            else:
+                # P0 fallback: rule-based keyword detection
+                recent = read_user_messages(transcript_path)[-5:]
+                detection = detect_topic_deviation(user_prompt, recent)
+
+            if detection.get("is_deviation"):
+                reason = detection.get("reason", "")
                 additional_parts.append(
-                    f"⚠️ [話題逸脱の可能性] 現在のトピックと関連が薄いかもしれません "
-                    f"({detection['reason']})。"
-                    f"別トピックの場合は新しいセッションの開始を検討してください。"
+                    f"⚠️ [話題逸脱の可能性] 現在のセッションのトピックと関連が薄いかもしれません"
+                    f" ({reason})。別トピックの場合は新しいセッションの開始を検討してください。"
                 )
         except Exception:
             pass  # Detection failure must never block user
