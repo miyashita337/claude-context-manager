@@ -1,0 +1,29 @@
+name: Issue Priority Auto-Label
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  set-priority:
+    runs-on: ubuntu-latest
+    # bot自身の編集は Python スクリプト内でスキップするが、念のため早期除外
+    if: github.event.sender.login != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install anthropic
+
+      - name: Determine priority and set label
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/issue_priority.py
