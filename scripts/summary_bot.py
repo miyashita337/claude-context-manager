@@ -38,8 +38,19 @@ def strip_existing_summary(body: str) -> str:
 def call_claude(title: str, body: str, event_type: str) -> str:
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     target = "Issue" if event_type == "issues" else "Pull Request"
-    prompt = f"""以下の{target}の内容を読んで、ポエム調・詩的な表現で3〜5行の要約を書いてください。
-技術的な内容でも、比喩や詩的な言葉を使って、読む人が一瞬でエッセンスをつかめるようにしてください。
+    prompt = f"""以下の{target}の内容を読んで、**情報密度の高いポエム調要約**を3〜6行で書いてください。
+
+要件:
+- 何の問題/機能か、原因や対策など具体的な事実を必ず含める
+- ポエム調・詩的なリズムで書く（比喩OKだが内容は具体的に）
+- 読んだ人が「何の話か」が30秒でわかるレベルの情報量
+
+良い例（日本語文字化けIssueの場合）:
+「ひらがなが+0x90オフセットでカタカナへ化ける怪、
+IMEカーソルが日本語を飲み込む二つの罪。
+accessibilitySupport設定で静めながら、
+根本原因は闇の中、観察続ける。」
+
 日本語で書いてください。要約のみを出力し、前置きや説明は不要です。
 
 タイトル: {title}
