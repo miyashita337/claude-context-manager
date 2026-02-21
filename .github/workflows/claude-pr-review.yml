@@ -1,0 +1,39 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, develop]
+  issue_comment:
+    types: [created]
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    # issue_comment トリガーはPRコメントのみ処理（issueコメントは除外）
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request != null &&
+       contains(github.event.comment.body, '@claude'))
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            このPRを日本語でレビューしてください。以下の観点でコメントしてください：
+            - バグ・ロジックの誤り
+            - セキュリティリスク（機密情報の露出、インジェクション等）
+            - 設計上の問題点
+            - 改善提案（必要な場合のみ）
+
+            軽微なスタイルの指摘は省略し、重要な問題に絞ってください。
