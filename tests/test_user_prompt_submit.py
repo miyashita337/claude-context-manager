@@ -311,3 +311,37 @@ class TestRunDetectionPipeline:
                 result = ups._run_detection("今日の天気は？", "s1", transcript)
 
         assert result["is_deviation"]
+
+
+# =============================================================================
+# Unit tests: _query_topic_server()
+# =============================================================================
+
+class TestQueryTopicServer:
+    """Verify P1 embedding server error handling."""
+
+    def test_empty_body_from_server_returns_unavailable(self, transcript):
+        """Embedding server returns empty body → JSONDecodeError must NOT propagate."""
+        import http.client
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b""  # empty body → json.loads("") raises JSONDecodeError
+
+        with patch.object(http.client, "HTTPConnection") as mock_conn_cls:
+            mock_conn_cls.return_value.getresponse.return_value = mock_resp
+            result = ups._query_topic_server("test prompt", "sess1", transcript)
+
+        assert result["available"] is False
+
+    def test_invalid_json_from_server_returns_unavailable(self, transcript):
+        """Embedding server returns malformed JSON → ValueError must NOT propagate."""
+        import http.client
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b"not-json"
+
+        with patch.object(http.client, "HTTPConnection") as mock_conn_cls:
+            mock_conn_cls.return_value.getresponse.return_value = mock_resp
+            result = ups._query_topic_server("test prompt", "sess1", transcript)
+
+        assert result["available"] is False

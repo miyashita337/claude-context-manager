@@ -101,7 +101,7 @@ def _query_topic_server(prompt: str, session_id: str, transcript_path: str) -> d
         data = json.loads(resp.read())
         conn.close()
         return {"available": True, **data}
-    except OSError:
+    except (OSError, ValueError):
         return {"available": False, "reason": "server_not_running"}
 
 
