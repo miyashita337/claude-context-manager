@@ -218,6 +218,30 @@ class TestQueryLlmP2:
         assert result["decision"] == "warn"
         assert result["reason"] == "p2_empty_text"
 
+    def test_haiku_returns_prose_not_json(self):
+        """Haiku returns prose ('I cannot determine...') instead of JSON → warn, not crash."""
+        body = {"content": [{"type": "text", "text": "I cannot determine if this is off-topic."}]}
+        with patch("urllib.request.urlopen", return_value=_mock_urlopen(body)):
+            with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+                result = ups._query_llm_p2("some prompt", [])
+
+        assert result["decision"] == "warn"
+        assert result["reason"] == "p2_non_json_text"
+
+    def test_waf_html_response_body_returns_warn(self):
+        """CDN/WAF returns HTML with 200 status → non-JSON body guard catches it."""
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b"<html>Gateway Error</html>"
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+                result = ups._query_llm_p2("some prompt", [])
+
+        assert result["decision"] == "warn"
+        assert result["reason"] == "p2_non_json_body"
+
 
 # =============================================================================
 # Integration tests: _run_detection() pipeline trigger conditions

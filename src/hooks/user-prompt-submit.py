@@ -258,6 +258,10 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
     if not resp_body or not resp_body.strip():
         return {"decision": "warn", "reason": "p2_empty_body"}
 
+    # Guard: non-JSON body (e.g. HTML from WAF/CDN returning 200 with error page)
+    if not resp_body.strip().startswith((b'{', b'[')):
+        return {"decision": "warn", "reason": "p2_non_json_body"}
+
     try:
         data = json.loads(resp_body)
         content_list = data.get("content", [])
@@ -267,6 +271,10 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
         text = content_list[0].get("text", "")
         if not text.strip():
             return {"decision": "warn", "reason": "p2_empty_text"}
+
+        # Guard: Haiku returned prose instead of JSON (e.g. "I cannot determine...")
+        if not text.strip().startswith(('{', '[')):
+            return {"decision": "warn", "reason": "p2_non_json_text"}
 
         result = json.loads(text.strip())
 
