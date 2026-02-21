@@ -70,6 +70,27 @@ git add <files>     # 個別ファイル指定（推奨）
 git commit          # pre-commitフックが自動実行（P1実装後）
 ```
 
+### PR作成ルール（BLOCKING REQUIREMENT）
+
+**PR bodyには必ず対応するISSUE番号を `Closes #XX` で記載する。**
+
+```markdown
+## Summary
+...
+
+Closes #XX  ← 必須。これがないとISSUEが自動Closeされない。
+```
+
+**理由**:
+- PRマージ時にGitHubがISSUEを自動Close
+- ガントチャートの `Target date` が自動セットされる（gantt-auto-dates workflow）
+- 振り返り時にPR↔ISSUE の対応が追える
+
+**NGパターン**:
+```markdown
+# #40 のリンクをbodyに書かない → ISSUEがCloseされず、Target dateがセットされない
+```
+
 ---
 
 ## テスト

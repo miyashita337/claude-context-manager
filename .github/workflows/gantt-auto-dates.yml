@@ -38,13 +38,16 @@ jobs:
           echo "item_id=$ITEM_ID" >> $GITHUB_OUTPUT
           echo "Found item ID: $ITEM_ID"
 
-      - name: Set Start date on issue open
+      - name: Set Start date and provisional Target date on issue open
         if: github.event.action == 'opened' && steps.get-item.outputs.item_id != ''
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           TODAY=$(date -u +%Y-%m-%d)
-          echo "Setting Start date to $TODAY for item ${{ steps.get-item.outputs.item_id }}"
+          TARGET=$(date -u -d "+14 days" +%Y-%m-%d 2>/dev/null || date -u -v+14d +%Y-%m-%d)
+          echo "Setting Start date to $TODAY, provisional Target date to $TARGET"
+
+          # Start date をセット
           gh api graphql -f query='
             mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $date: Date!) {
               updateProjectV2ItemFieldValue(input: {
@@ -61,6 +64,24 @@ jobs:
           -f itemId="${{ steps.get-item.outputs.item_id }}" \
           -f fieldId="PVTF_lAHOAAnM1c4BPcBdzg92YI8" \
           -f date="$TODAY"
+
+          # Target date を仮セット（+14日）
+          gh api graphql -f query='
+            mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $date: Date!) {
+              updateProjectV2ItemFieldValue(input: {
+                projectId: $projectId
+                itemId: $itemId
+                fieldId: $fieldId
+                value: { date: $date }
+              }) {
+                projectV2Item { id }
+              }
+            }
+          ' \
+          -f projectId="PVT_kwHOAAnM1c4BPcBd" \
+          -f itemId="${{ steps.get-item.outputs.item_id }}" \
+          -f fieldId="PVTF_lAHOAAnM1c4BPcBdzg92YJA" \
+          -f date="$TARGET"
 
       - name: Set Target date on issue close
         if: github.event.action == 'closed' && steps.get-item.outputs.item_id != ''
