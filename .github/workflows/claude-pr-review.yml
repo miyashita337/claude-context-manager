@@ -29,11 +29,21 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          allowed_tools: "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(git diff:*),Bash(git log:*)"
           prompt: |
-            このPRを日本語でレビューしてください。以下の観点でコメントしてください：
-            - バグ・ロジックの誤り
-            - セキュリティリスク（機密情報の露出、インジェクション等）
-            - 設計上の問題点
-            - 改善提案（必要な場合のみ）
+            リポジトリ: ${{ github.repository }}
+            PR番号: ${{ github.event.pull_request.number }}
 
-            軽微なスタイルの指摘は省略し、重要な問題に絞ってください。
+            上記のPRを以下の手順でレビューしてください：
+
+            1. `gh pr diff ${{ github.event.pull_request.number }}` で差分を確認する
+            2. 以下の観点でレビューコメントを作成する：
+               - バグ・ロジックの誤り
+               - セキュリティリスク（機密情報の露出、インジェクション等）
+               - 設計上の問題点
+               - 改善提案（必要な場合のみ）
+            3. `gh pr comment ${{ github.event.pull_request.number }} --body "レビュー内容"` でコメントを投稿する
+
+            軽微なスタイルの指摘は省略し、重要な問題に絞って日本語でコメントしてください。
+            プロジェクトのスクリプトや分析ツールは実行しないでください。
