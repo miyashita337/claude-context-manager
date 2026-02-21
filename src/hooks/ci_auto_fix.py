@@ -11,6 +11,7 @@ Return codes:
 """
 
 import json
+import shlex
 import subprocess
 import sys
 import time
@@ -32,9 +33,14 @@ LOG_LIMIT = 3000    # max chars of CI failure log passed to claude
 # ---------------------------------------------------------------------------
 
 
-def run(cmd: str, **kwargs) -> subprocess.CompletedProcess:
-    """Run a shell command and return CompletedProcess."""
-    return subprocess.run(cmd, shell=True, capture_output=True, text=True, **kwargs)
+def run(cmd, **kwargs) -> subprocess.CompletedProcess:
+    """Run a shell command and return CompletedProcess.
+
+    Args:
+        cmd: Command as a string (will be split via shlex) or list of args.
+    """
+    args = shlex.split(cmd) if isinstance(cmd, str) else cmd
+    return subprocess.run(args, shell=False, capture_output=True, text=True, **kwargs)
 
 
 def _log(msg: str) -> None:
@@ -138,7 +144,7 @@ def attempt_claude_fix(logs: str, repo_root: str) -> None:
         f"{logs}"
     )
     run(
-        f'claude --dangerously-skip-permissions --print "{prompt}"',
+        ["claude", "--dangerously-skip-permissions", "--print", prompt],
         cwd=repo_root,
     )
 
