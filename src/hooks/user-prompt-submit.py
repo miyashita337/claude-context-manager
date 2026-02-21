@@ -82,12 +82,10 @@ def _query_topic_server(prompt: str, session_id: str, transcript_path: str) -> d
         {"available": True, "is_deviation": bool, "similarity": float, "reason": str}
         {"available": False, "reason": str}  ← server not running → fall back to P0
     """
-    import urllib.error
-    import urllib.request
+    import http.client
 
     all_messages = read_user_messages(transcript_path)
     baseline_messages = all_messages[:3]   # first 3 = session intent
-    # current prompt not yet in transcript → no need to exclude last
 
     payload = json.dumps({
         "prompt": prompt,
@@ -95,16 +93,15 @@ def _query_topic_server(prompt: str, session_id: str, transcript_path: str) -> d
         "baseline_messages": baseline_messages,
     }).encode()
 
-    req = urllib.request.Request(
-        "http://127.0.0.1:8765/similarity",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-    )
     try:
-        with urllib.request.urlopen(req, timeout=2) as resp:
-            data = json.loads(resp.read())
-            return {"available": True, **data}
-    except (urllib.error.URLError, OSError):
+        conn = http.client.HTTPConnection("127.0.0.1", 8765, timeout=2)
+        conn.request("POST", "/similarity", body=payload,
+                     headers={"Content-Type": "application/json"})
+        resp = conn.getresponse()
+        data = json.loads(resp.read())
+        conn.close()
+        return {"available": True, **data}
+    except OSError:
         return {"available": False, "reason": "server_not_running"}
 
 
@@ -214,7 +211,8 @@ def main():
             # P1: embedding server（日本語対応 similarity）
             p1 = _query_topic_server(user_prompt, session_id, transcript_path)
 
-            if p1["available"]:
+            if p1["available"] and p1.get("reason") != "no_baseline":
+                # P1: baseline あり → embedding similarity で判定
                 detection = p1
                 # P0 veto: P1がWARNでも技術キーワードがあればPASSに上書き
                 # 例: "Aのバグ"→"Bのバグ" は similarity 低くても tech_context でPASS
@@ -226,7 +224,7 @@ def main():
                             "reason": f"p0_tech_veto (p1_sim={p1.get('similarity', '?')})",
                         }
             else:
-                # P0 fallback: rule-based keyword detection
+                # P0 fallback: サーバー停止 or baseline未形成（セッション先頭）
                 recent = read_user_messages(transcript_path)[-5:]
                 detection = detect_topic_deviation(user_prompt, recent)
 
