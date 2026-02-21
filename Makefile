@@ -1,7 +1,7 @@
 # Claude Context Manager - Makefile
 # 便利なショートカットコマンド集
 
-.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch ccusage-report analytics analytics-update validate-analytics review review-latest review-list update-antipatterns
+.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch ccusage-report analytics analytics-update validate-analytics review review-latest review-list update-antipatterns install-topic-server start-topic-server stop-topic-server uninstall-topic-server status-topic-server
 
 # デフォルトターゲット: ヘルプを表示
 help:
@@ -33,6 +33,13 @@ help:
 	@echo "  make review-latest        - 最新セッションをキャッシュ"
 	@echo "  make review-list          - 既存レビュー一覧表示"
 	@echo "  make update-antipatterns  - /antipatterns スキルの更新チェック"
+	@echo ""
+	@echo "🧠 話題逸脱検出サーバー (Issue #28):"
+	@echo "  make install-topic-server   - sentence-transformers インストール + launchd 登録"
+	@echo "  make status-topic-server    - サーバー動作確認"
+	@echo "  make start-topic-server     - 手動起動"
+	@echo "  make stop-topic-server      - 停止"
+	@echo "  make uninstall-topic-server - launchd から削除"
 	@echo ""
 	@echo "🔄 CI/CD:"
 	@echo "  make ci-watch PR=<n>  - PR #nのCI監視（自動リトライ）"
@@ -287,3 +294,42 @@ update-antipatterns:
 	@echo "  /fact-check \"Verify antipatterns match official docs at code.claude.com/docs/en/best-practices\""
 	@echo ""
 	@echo "💡 30日以上経過している場合は更新を推奨します"
+
+# ============================================================
+# 話題逸脱検出サーバー管理 (Issue #28)
+# ============================================================
+
+TOPIC_SERVER_LABEL = com.claude.topic-server
+TOPIC_SERVER_PLIST = $(HOME)/Library/LaunchAgents/$(TOPIC_SERVER_LABEL).plist
+
+install-topic-server:
+	@echo "🧠 話題逸脱検出サーバーをインストール中..."
+	@chmod +x src/topic-server/install.sh
+	@src/topic-server/install.sh
+
+status-topic-server:
+	@echo "🧠 Topic Server ステータス:"
+	@if curl -sf http://127.0.0.1:8765/health > /dev/null 2>&1; then \
+		echo "  ✅ 起動中"; \
+		curl -s http://127.0.0.1:8765/health | python3 -m json.tool; \
+	else \
+		echo "  ❌ 停止中"; \
+		echo "  起動: make start-topic-server"; \
+	fi
+
+start-topic-server:
+	@echo "🧠 Topic Server を起動中..."
+	@launchctl start $(TOPIC_SERVER_LABEL) 2>/dev/null || \
+		launchctl load $(TOPIC_SERVER_PLIST) 2>/dev/null || \
+		(echo "❌ launchd 未登録。先に make install-topic-server を実行してください"; exit 1)
+	@echo "✅ 起動リクエスト送信完了"
+
+stop-topic-server:
+	@echo "🧠 Topic Server を停止中..."
+	@launchctl stop $(TOPIC_SERVER_LABEL) 2>/dev/null && echo "✅ 停止しました" || echo "⚠️  既に停止済みです"
+
+uninstall-topic-server:
+	@echo "🧠 Topic Server をアンインストール中..."
+	@launchctl unload $(TOPIC_SERVER_PLIST) 2>/dev/null || true
+	@rm -f $(TOPIC_SERVER_PLIST)
+	@echo "✅ アンインストール完了（sentence-transformers は削除しません）"

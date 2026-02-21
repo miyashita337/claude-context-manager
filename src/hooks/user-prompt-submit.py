@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Hook for capturing user prompts before submission to Claude."""
+"""Hook for capturing user prompts before submission to Claude.
+
+P0: Rule-based topic deviation detection (Issue #28)
+- Reads transcript_path for recent conversation context
+- Warns (never blocks) when clearly off-topic content is detected
+"""
 
 import json
 import sys
@@ -9,6 +14,120 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / 'shared'))
 
 from logger import SessionLogger
+
+# --- Topic Detection Constants ---
+
+# Off-topic keyword patterns (日本語・English)
+# Must NOT appear together with tech keywords to trigger warning
+_OFF_TOPIC = [
+    # 天気・気象
+    '天気', '気温', '台風', '気候', '天候', '晴れ', '曇り', '降水',
+    # ニュース・時事・政治
+    'ニュース', '時事', '政治', '選挙', '事件', '事故', '芸能',
+    # 金融・株式
+    '株価', '為替', '仮想通貨', 'bitcoin', 'btc', '投資信託',
+    # 料理・食事
+    'レシピ', '食べ物', 'ランチ', 'ディナー', '献立', '食材',
+    # エンタメ・雑談
+    'アニメ', 'マンガ', 'スポーツ', '野球', 'サッカー', '競馬',
+]
+
+# Tech/work-related keywords that override off-topic detection
+_TECH = [
+    # コーディング全般
+    'コード', '実装', 'バグ', 'エラー', 'デバッグ', 'テスト', 'リファクタ',
+    'ファイル', '関数', 'クラス', 'メソッド', 'モジュール', 'ライブラリ',
+    # Git / CI
+    'git', 'commit', 'push', 'pull', 'branch', 'merge', 'pr', 'issue',
+    # 言語・フレームワーク
+    'python', 'typescript', 'javascript', 'bash', 'shell', 'sql',
+    'api', 'json', 'yaml', 'toml', 'hook', 'cli', 'sdk',
+    # 作業動詞
+    'インストール', '設定', 'ビルド', 'デプロイ', '修正', '追加', '削除',
+    'import', 'def ', 'class ', 'return', 'fix', 'feat', 'refactor',
+    # このプロジェクト固有
+    'セッション', 'analytics', 'hook', 'claude', 'llm', 'token',
+]
+
+
+def read_user_messages(transcript_path: str) -> list[str]:
+    """Read ALL user messages (chronological) from session JSONL transcript."""
+    path = Path(transcript_path)
+    if not path.exists():
+        return []
+    messages = []
+    try:
+        with open(path, errors='replace') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if event.get('type') == 'user':
+                    content = event.get('message', {}).get('content', '')
+                    if isinstance(content, str) and content.strip():
+                        messages.append(content[:300])
+    except Exception:
+        pass
+    return messages
+
+
+def _query_topic_server(prompt: str, session_id: str, transcript_path: str) -> dict:
+    """P1: Query embedding server for similarity-based topic detection.
+
+    Returns:
+        {"available": True, "is_deviation": bool, "similarity": float, "reason": str}
+        {"available": False, "reason": str}  ← server not running → fall back to P0
+    """
+    import http.client
+
+    all_messages = read_user_messages(transcript_path)
+    baseline_messages = all_messages[:3]   # first 3 = session intent
+
+    payload = json.dumps({
+        "prompt": prompt,
+        "session_id": session_id,
+        "baseline_messages": baseline_messages,
+    }).encode()
+
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", 8765, timeout=2)
+        conn.request("POST", "/similarity", body=payload,
+                     headers={"Content-Type": "application/json"})
+        resp = conn.getresponse()
+        data = json.loads(resp.read())
+        conn.close()
+        return {"available": True, **data}
+    except OSError:
+        return {"available": False, "reason": "server_not_running"}
+
+
+def detect_topic_deviation(current_prompt: str, recent_messages: list[str]) -> dict:
+    """Rule-based off-topic detection (P0).
+
+    Returns:
+        {"is_deviation": bool, "reason": str}
+    """
+    text = (current_prompt + ' ' + ' '.join(recent_messages)).lower()
+    prompt_lower = current_prompt.lower()
+
+    # Tech keyword present → always PASS (prevents false positives like "天気予報APIの実装")
+    for kw in _TECH:
+        if kw in text:
+            return {"is_deviation": False, "reason": "tech_context"}
+
+    # Off-topic keyword in current prompt → WARN
+    found = [kw for kw in _OFF_TOPIC if kw in prompt_lower]
+    if found:
+        return {
+            "is_deviation": True,
+            "reason": f"off-topic keywords: {', '.join(found[:3])}",
+        }
+
+    return {"is_deviation": False, "reason": "ok"}
 
 
 def sanitize_stdin(stdin_content: str, hook_name: str) -> str:
@@ -73,23 +192,57 @@ def main():
         # Parse JSON
         input_data = json.loads(stdin_content)
 
-        # Extract session ID and user prompt
+        # Extract session ID, user prompt, and transcript path
         session_id = input_data.get('session_id', 'unknown')
         user_prompt = input_data.get('prompt', '')
+        transcript_path = input_data.get('transcript_path', '')
 
         # Log the user prompt
         logger = SessionLogger(session_id)
         logger.add_entry('user', user_prompt)
 
-        # Get session stats (for potential future use)
+        # Get session stats
         stats = logger.get_session_stats()
+
+        # --- Topic deviation detection: P1 (embedding) → P0 (rule) fallback ---
+        additional_parts = [f"Logged user prompt. Session stats: {stats['total_tokens']} tokens"]
+
+        try:
+            # P1: embedding server（日本語対応 similarity）
+            p1 = _query_topic_server(user_prompt, session_id, transcript_path)
+
+            if p1["available"] and p1.get("reason") != "no_baseline":
+                # P1: baseline あり → embedding similarity で判定
+                detection = p1
+                # P0 veto: P1がWARNでも技術キーワードがあればPASSに上書き
+                # 例: "Aのバグ"→"Bのバグ" は similarity 低くても tech_context でPASS
+                if detection.get("is_deviation"):
+                    p0_check = detect_topic_deviation(user_prompt, [])
+                    if p0_check["reason"] == "tech_context":
+                        detection = {
+                            "is_deviation": False,
+                            "reason": f"p0_tech_veto (p1_sim={p1.get('similarity', '?')})",
+                        }
+            else:
+                # P0 fallback: サーバー停止 or baseline未形成（セッション先頭）
+                recent = read_user_messages(transcript_path)[-5:]
+                detection = detect_topic_deviation(user_prompt, recent)
+
+            if detection.get("is_deviation"):
+                reason = detection.get("reason", "")
+                additional_parts.append(
+                    f"⚠️ [話題逸脱の可能性] 現在のセッションのトピックと関連が薄いかもしれません"
+                    f" ({reason})。別トピックの場合は新しいセッションの開始を検討してください。"
+                )
+        except Exception:
+            pass  # Detection failure must never block user
 
         # Return success with hookEventName
         print(json.dumps({
             "hookSpecificOutput": {
                 "hookEventName": "UserPromptSubmit",
                 "status": "logged",
-                "additionalContext": f"Logged user prompt. Session stats: {stats['total_tokens']} tokens"
+                "additionalContext": " | ".join(additional_parts)
             }
         }))
         sys.exit(0)
