@@ -381,11 +381,18 @@ def main():
                 reason = detection.get("reason", "")
                 judgment_failed = detection.get("judgment_failed", False)
 
+                # プロンプトの冒頭をモーダルに表示（どの発言が引っかかったか識別用）
+                prompt_preview = user_prompt[:40].replace('\n', ' ')
+                if len(user_prompt) > 40:
+                    prompt_preview += "..."
+                prompt_line = f"▶ 「{prompt_preview}」"
+
                 # デフォルト値を先に設定（NameError防止 + 明示的な初期化）
                 alert_title = "🔴 話題逸脱の可能性"
                 alert_message = (
                     "現在のセッションのトピックと関連が薄いかもしれません。\n"
-                    "別トピックの場合は新しいセッションの開始を検討してください。"
+                    "別トピックの場合は新しいセッションの開始を検討してください。\n"
+                    f"{prompt_line}"
                 )
 
                 if judgment_failed:
@@ -397,7 +404,8 @@ def main():
                     alert_message = (
                         "LLMが判定できませんでした。\n"
                         "話題が逸脱している可能性があります。\n"
-                        "念のため確認してください。"
+                        "念のため確認してください。\n"
+                        f"{prompt_line}"
                     )
                 else:
                     additional_parts.append(
