@@ -74,16 +74,22 @@ echo "   ✅ launchd 登録完了"
 
 # --- 5. 起動確認 (モデルロードに時間がかかるため少し待つ) ---
 echo ""
-echo "⏳ サーバー起動待機中 (モデルロード ~10秒)..."
-for i in $(seq 1 20); do
+echo "⏳ サーバー起動待機中 (初回はモデルDL込みで最大60秒)..."
+for i in $(seq 1 60); do
     sleep 1
     if curl -sf http://127.0.0.1:8765/health > /dev/null 2>&1; then
         echo "   ✅ サーバー起動確認 (${i}秒)"
         curl -s http://127.0.0.1:8765/health | python3 -m json.tool
         break
     fi
-    if [ "$i" -eq 20 ]; then
-        echo "   ⚠️  起動タイムアウト。ログを確認: $LOG_DIR/topic-server-error.log"
+    # 進捗表示（10秒ごと）
+    if [ $((i % 10)) -eq 0 ]; then
+        echo "   ... ${i}秒経過"
+        tail -1 "$LOG_DIR/topic-server-error.log" 2>/dev/null | sed 's/^/   /'
+    fi
+    if [ "$i" -eq 60 ]; then
+        echo "   ⚠️  起動タイムアウト（60秒）。ログ確認: $LOG_DIR/topic-server-error.log"
+        echo "   サーバーは裏で起動中の可能性あり。しばらく後に: make status-topic-server"
     fi
 done
 

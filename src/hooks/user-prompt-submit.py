@@ -216,6 +216,15 @@ def main():
 
             if p1["available"]:
                 detection = p1
+                # P0 veto: P1がWARNでも技術キーワードがあればPASSに上書き
+                # 例: "Aのバグ"→"Bのバグ" は similarity 低くても tech_context でPASS
+                if detection.get("is_deviation"):
+                    p0_check = detect_topic_deviation(user_prompt, [])
+                    if p0_check["reason"] == "tech_context":
+                        detection = {
+                            "is_deviation": False,
+                            "reason": f"p0_tech_veto (p1_sim={p1.get('similarity', '?')})",
+                        }
             else:
                 # P0 fallback: rule-based keyword detection
                 recent = read_user_messages(transcript_path)[-5:]
