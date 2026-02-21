@@ -195,7 +195,7 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        return {"decision": "warn", "reason": "p2_unavailable (no API key)"}
+        return {"decision": "warn", "reason": "p2_unavailable (no API key)", "judgment_failed": True}
 
     _SYSTEM_PROMPT = (
         "You are evaluating whether a user's new prompt is off-topic for their current work session.\n\n"
@@ -250,31 +250,31 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
         with urllib.request.urlopen(req, timeout=5) as resp:  # nosemgrep: dynamic-urllib-use-detected
             resp_body = resp.read()
     except urllib.error.HTTPError as e:
-        return {"decision": "warn", "reason": f"p2_api_error ({e.code})"}
+        return {"decision": "warn", "reason": f"p2_api_error ({e.code})", "judgment_failed": True}
     except Exception as e:
         _p2_debug_log(f"urlopen raised {type(e).__name__}: {e}")
-        return {"decision": "warn", "reason": f"p2_error: {str(e)[:50]}"}
+        return {"decision": "warn", "reason": f"p2_error: {str(e)[:50]}", "judgment_failed": True}
 
     if not resp_body or not resp_body.strip():
-        return {"decision": "warn", "reason": "p2_empty_body"}
+        return {"decision": "warn", "reason": "p2_empty_body", "judgment_failed": True}
 
     # Guard: non-JSON body (e.g. HTML from WAF/CDN returning 200 with error page)
     if not resp_body.strip().startswith((b'{', b'[')):
-        return {"decision": "warn", "reason": "p2_non_json_body"}
+        return {"decision": "warn", "reason": "p2_non_json_body", "judgment_failed": True}
 
     try:
         data = json.loads(resp_body)
         content_list = data.get("content", [])
         if not content_list:
-            return {"decision": "warn", "reason": "p2_empty_response"}
+            return {"decision": "warn", "reason": "p2_empty_response", "judgment_failed": True}
 
         text = content_list[0].get("text", "")
         if not text.strip():
-            return {"decision": "warn", "reason": "p2_empty_text"}
+            return {"decision": "warn", "reason": "p2_empty_text", "judgment_failed": True}
 
         # Guard: Haiku returned prose instead of JSON (e.g. "I cannot determine...")
         if not text.strip().startswith(('{', '[')):
-            return {"decision": "warn", "reason": "p2_non_json_text"}
+            return {"decision": "warn", "reason": "p2_non_json_text", "judgment_failed": True}
 
         result = json.loads(text.strip())
 
@@ -289,7 +289,7 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
             f"resp_body[:200]={repr(resp_body[:200])}\n"
             f"traceback:\n{traceback.format_exc()}"
         )
-        return {"decision": "warn", "reason": f"p2_error: {str(e)[:50]}"}
+        return {"decision": "warn", "reason": f"p2_error: {str(e)[:50]}", "judgment_failed": True}
 
 
 def _run_detection(current_prompt: str, session_id: str, transcript_path: str) -> dict:
@@ -324,7 +324,11 @@ def _run_detection(current_prompt: str, session_id: str, transcript_path: str) -
                         "reason": f"p2_pass ({p2['reason']})",
                     }
                 else:
-                    detection = {"is_deviation": True, "reason": p2["reason"]}
+                    detection = {
+                        "is_deviation": True,
+                        "reason": p2["reason"],
+                        "judgment_failed": p2.get("judgment_failed", False),
+                    }
     else:
         # P0 fallback: サーバー停止 or baseline未形成（セッション先頭）
         recent = read_user_messages(transcript_path)[-5:]
@@ -375,26 +379,46 @@ def main():
 
             if detection.get("is_deviation"):
                 reason = detection.get("reason", "")
-                additional_parts.append(
-                    f"⚠️ [話題逸脱の可能性] 現在のセッションのトピックと関連が薄いかもしれません"
-                    f" ({reason})。別トピックの場合は新しいセッションの開始を検討してください。"
-                )
-                # notify.sh でOS通知を発火（バックグラウンド、ブロックしない）
+                judgment_failed = detection.get("judgment_failed", False)
+
+                if judgment_failed:
+                    additional_parts.append(
+                        f"🔴🔴🔴 [判定不能] LLMが話題逸脱の判定に失敗しました"
+                        f" ({reason})。念のため確認してください。"
+                    )
+                    alert_title = "⚠️ 話題逸脱：判定不能"
+                    alert_message = (
+                        "LLMが判定できませんでした。\\n"
+                        "話題が逸脱している可能性があります。\\n"
+                        "念のため確認してください。"
+                    )
+                else:
+                    additional_parts.append(
+                        f"🔴🔴🔴 [話題逸脱の可能性] 現在のセッションのトピックと関連が薄いかもしれません"
+                        f" ({reason})。別トピックの場合は新しいセッションの開始を検討してください。"
+                    )
+                    alert_title = "🔴 話題逸脱の可能性"
+                    alert_message = (
+                        "現在のセッションのトピックと関連が薄いかもしれません。\\n"
+                        "別トピックの場合は新しいセッションの開始を検討してください。"
+                    )
+
+                # AppleScriptモーダルで強制通知（バックグラウンド起動、クリックまで残る）
                 try:
                     import subprocess
-                    notify_script = Path.home() / '.claude' / 'notify.sh'
-                    if notify_script.exists():
-                        payload = json.dumps({
-                            "notification_type": "topic_deviation",
-                            "message": "現在のトピックと関連が薄い可能性があります",
-                        })
-                        subprocess.Popen(
-                            ['bash', str(notify_script)],
-                            input=payload.encode(),
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                            start_new_session=True,
-                        )
+                    script = (
+                        f'display alert "{alert_title}" '
+                        f'message "{alert_message}" '
+                        f'buttons {{"確認"}} '
+                        f'default button "確認" '
+                        f'as critical'
+                    )
+                    subprocess.Popen(
+                        ['osascript', '-e', script],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
                 except Exception:
                     pass  # 通知失敗はユーザーをブロックしない
         except Exception:
