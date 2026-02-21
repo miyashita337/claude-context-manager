@@ -1,0 +1,7 @@
+# Semgrep ignore patterns
+# See: https://semgrep.dev/docs/ignoring-files-folders-code/
+
+# Hook scripts: internal developer tools, not user-facing APIs.
+# urllib / http.client usage here accesses only hardcoded Anthropic API URLs.
+# Secret detection is separately covered by GitLeaks and TruffleHog.
+src/hooks/user-prompt-submit.py

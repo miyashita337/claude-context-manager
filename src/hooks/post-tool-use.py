@@ -102,85 +102,93 @@ def main():
         # Get session stats (for potential future use)
         stats = logger.get_session_stats()
 
-        # Auto-monitor CI after git push
+        # Auto-monitor CI after git push or gh pr create
         additional_context = f"Logged {tool_name} tool usage. Session stats: {stats['total_tokens']} tokens"
         if tool_name == "Bash" and tool_input.get('command'):
             command = tool_input.get('command', '')
-            # Detect git push (but not dry-run)
-            if 'git push' in command and '--dry-run' not in command:
+            is_push = 'git push' in command and '--dry-run' not in command
+            is_pr_create = 'gh pr create' in command
+
+            if is_push or is_pr_create:
                 try:
+                    import re
                     import subprocess
-                    import os
+                    import time
 
-                    # Get git root directory
-                    git_root_result = subprocess.run(
-                        ['git', 'rev-parse', '--show-toplevel'],
-                        capture_output=True,
-                        text=True,
-                        check=False,
-                        cwd=Path.cwd()
-                    )
+                    pr_num = None
+                    repo_root = None
+                    branch = None
 
-                    if git_root_result.returncode == 0:
-                        repo_root = git_root_result.stdout.strip()
+                    # Case A: gh pr create → extract PR number from response URL
+                    # Response contains: https://github.com/owner/repo/pull/NUMBER
+                    if is_pr_create:
+                        response_text = str(tool_response)
+                        m = re.search(r'/pull/(\d+)', response_text)
+                        if m:
+                            pr_num = m.group(1)
+                            git_root_result = subprocess.run(
+                                ['git', 'rev-parse', '--show-toplevel'],
+                                capture_output=True, text=True, check=False,
+                                cwd=Path.cwd()
+                            )
+                            if git_root_result.returncode == 0:
+                                repo_root = git_root_result.stdout.strip()
+                            branch_result = subprocess.run(
+                                ['git', 'branch', '--show-current'],
+                                capture_output=True, text=True, check=False,
+                                cwd=repo_root or str(Path.cwd())
+                            )
+                            if branch_result.returncode == 0:
+                                branch = branch_result.stdout.strip()
 
-                        # Get current branch
-                        branch_result = subprocess.run(
-                            ['git', 'branch', '--show-current'],
-                            capture_output=True,
-                            text=True,
-                            check=False,
-                            cwd=repo_root
+                    # Case B: git push → look up existing PR by branch
+                    if is_push and not pr_num:
+                        git_root_result = subprocess.run(
+                            ['git', 'rev-parse', '--show-toplevel'],
+                            capture_output=True, text=True, check=False,
+                            cwd=Path.cwd()
                         )
-
-                        if branch_result.returncode == 0:
-                            branch = branch_result.stdout.strip()
-
-                            # Get PR number
-                            pr_result = subprocess.run(
-                                ['gh', 'pr', 'list', '--head', branch, '--json', 'number', '--jq', '.[0].number'],
-                                capture_output=True,
-                                text=True,
-                                check=False,
+                        if git_root_result.returncode == 0:
+                            repo_root = git_root_result.stdout.strip()
+                            branch_result = subprocess.run(
+                                ['git', 'branch', '--show-current'],
+                                capture_output=True, text=True, check=False,
                                 cwd=repo_root
                             )
+                            if branch_result.returncode == 0:
+                                branch = branch_result.stdout.strip()
+                                pr_result = subprocess.run(
+                                    ['gh', 'pr', 'list', '--head', branch,
+                                     '--json', 'number', '--jq', '.[0].number'],
+                                    capture_output=True, text=True, check=False,
+                                    cwd=repo_root
+                                )
+                                if pr_result.returncode == 0:
+                                    raw = pr_result.stdout.strip()
+                                    if raw and raw != 'null':
+                                        pr_num = raw
 
-                            if pr_result.returncode == 0 and pr_result.stdout.strip():
-                                pr_num = pr_result.stdout.strip()
-                                if pr_num != 'null':
-                                    # Create signal file for CI monitor agent
-                                    import time
-                                    signal_file = Path.home() / '.claude' / 'ci-monitoring-request.json'
-                                    signal_data = {
-                                        'pr_number': pr_num,
-                                        'branch': branch,
-                                        'repo_root': repo_root,
-                                        'timestamp': time.time()
-                                    }
+                    if pr_num and repo_root:
+                        signal_file = Path.home() / '.claude' / 'ci-monitoring-request.json'
+                        signal_data = {
+                            'pr_number': pr_num,
+                            'branch': branch or '',
+                            'repo_root': repo_root,
+                            'timestamp': time.time()
+                        }
+                        with open(signal_file, 'w', encoding='utf-8') as f:
+                            json.dump(signal_data, f, indent=2)
 
-                                    try:
-                                        with open(signal_file, 'w', encoding='utf-8') as f:
-                                            json.dump(signal_data, f, indent=2)
-
-                                        # Launch ci-auto-fix loop in background
-                                        import subprocess
-                                        hooks_dir = Path(__file__).parent
-                                        subprocess.Popen(
-                                            [
-                                                sys.executable,
-                                                str(hooks_dir / "ci_auto_fix.py"),
-                                                pr_num,
-                                                repo_root,
-                                            ],
-                                            stdout=subprocess.DEVNULL,
-                                            stderr=subprocess.DEVNULL,
-                                            start_new_session=True
-                                        )
-                                        additional_context += f" | 🔄 CI自動修正ループ起動 - PR #{pr_num} (最大3回リトライ)"
-                                    except Exception as e:
-                                        additional_context += f" | ⚠️ CI自動修正起動失敗: {str(e)}"
-                except Exception as e:
-                    # Don't fail the hook if CI auto-watch fails
+                        hooks_dir = Path(__file__).parent
+                        subprocess.Popen(
+                            [sys.executable, str(hooks_dir / "ci_auto_fix.py"),
+                             pr_num, repo_root],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            start_new_session=True
+                        )
+                        additional_context += f" | 🔄 CI自動修正ループ起動 - PR #{pr_num} (最大3回リトライ)"
+                except Exception:
                     pass
 
         # Return success with hookEventName
