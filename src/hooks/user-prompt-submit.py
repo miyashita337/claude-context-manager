@@ -179,8 +179,9 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
     Returns:
         {"decision": "pass"|"warn", "reason": str}
     """
-    import http.client
     import os
+    import urllib.error
+    import urllib.request
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
@@ -223,30 +224,30 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
         "messages": [{"role": "user", "content": user_content}],
     }).encode()
 
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "prompt-caching-2024-07-31",
+        },
+        method="POST",
+    )
+
     try:
-        conn = http.client.HTTPSConnection("api.anthropic.com", timeout=5)
-        conn.request(
-            "POST",
-            "/v1/messages",
-            body=payload,
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "anthropic-beta": "prompt-caching-2024-07-31",
-            },
-        )
-        resp = conn.getresponse()
-        resp_body = resp.read()
-        resp_status = resp.status
-        conn.close()
+        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+            resp_body = resp.read()
+    except urllib.error.HTTPError as e:
+        return {"decision": "warn", "reason": f"p2_api_error ({e.code})"}
+    except Exception as e:
+        return {"decision": "warn", "reason": f"p2_error: {str(e)[:50]}"}
 
-        if resp_status != 200:
-            return {"decision": "warn", "reason": f"p2_api_error ({resp_status})"}
+    if not resp_body or not resp_body.strip():
+        return {"decision": "warn", "reason": "p2_empty_body"}
 
-        if not resp_body or not resp_body.strip():
-            return {"decision": "warn", "reason": "p2_empty_body"}
-
+    try:
         data = json.loads(resp_body)
         content_list = data.get("content", [])
         if not content_list:
@@ -263,7 +264,7 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
         return {"decision": "warn", "reason": f"p2_llm: {result.get('reason', 'off-topic')}"}
 
     except Exception as e:
-        # Any error → preserve P1 WARN (conservative fallback)
+        # JSON parse failure → preserve P1 WARN (conservative fallback)
         return {"decision": "warn", "reason": f"p2_error: {str(e)[:50]}"}
 
 

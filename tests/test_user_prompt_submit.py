@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 import sys
+import urllib.error
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -35,15 +36,20 @@ ups = _load_ups()
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
-def _mock_api_response(status: int, body: dict) -> MagicMock:
-    """Return a mock HTTPSConnection whose getresponse() yields (status, body)."""
-    resp = MagicMock()
-    resp.status = status
-    resp.read.return_value = json.dumps(body).encode()
+def _mock_urlopen(body: dict) -> MagicMock:
+    """Return a mock context-manager for urllib.request.urlopen (200 success)."""
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps(body).encode()
+    mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+    mock_resp.__exit__ = MagicMock(return_value=False)
+    return mock_resp
 
-    conn = MagicMock()
-    conn.getresponse.return_value = resp
-    return conn
+
+def _http_error(status: int) -> urllib.error.HTTPError:
+    """Return an HTTPError for the given status code."""
+    return urllib.error.HTTPError(
+        url=None, code=status, msg="Error", hdrs=None, fp=None
+    )
 
 
 def _api_ok(ok: bool, reason: str = "") -> dict:
@@ -88,8 +94,7 @@ class TestQueryLlmP2:
 
     def test_on_topic_returns_pass(self):
         """ok:true → decision=pass."""
-        conn = _mock_api_response(200, _api_ok(True))
-        with patch("http.client.HTTPSConnection", return_value=conn):
+        with patch("urllib.request.urlopen", return_value=_mock_urlopen(_api_ok(True))):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("refactor this function", ["fix bug"])
 
@@ -97,8 +102,7 @@ class TestQueryLlmP2:
 
     def test_off_topic_returns_warn_with_reason(self):
         """ok:false → decision=warn, reason propagated."""
-        conn = _mock_api_response(200, _api_ok(False, "weather unrelated to work"))
-        with patch("http.client.HTTPSConnection", return_value=conn):
+        with patch("urllib.request.urlopen", return_value=_mock_urlopen(_api_ok(False, "weather unrelated to work"))):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("what's the weather today?", ["fix bug"])
 
@@ -109,9 +113,8 @@ class TestQueryLlmP2:
 
     @pytest.mark.parametrize("status", [400, 401, 429, 500, 503])
     def test_api_non_200_returns_warn(self, status):
-        """Any non-200 status → warn with api_error tag."""
-        conn = _mock_api_response(status, {"error": "something went wrong"})
-        with patch("http.client.HTTPSConnection", return_value=conn):
+        """Any non-200 HTTP error → warn with api_error tag."""
+        with patch("urllib.request.urlopen", side_effect=_http_error(status)):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("some prompt", [])
 
@@ -122,12 +125,10 @@ class TestQueryLlmP2:
     # ── network / connection errors ──────────────────────────────────────────
 
     def test_timeout_returns_warn(self):
-        """OSError timeout → warn, never raises."""
+        """socket.timeout → warn, never raises."""
         import socket
 
-        conn = MagicMock()
-        conn.getresponse.side_effect = socket.timeout("timed out")
-        with patch("http.client.HTTPSConnection", return_value=conn):
+        with patch("urllib.request.urlopen", side_effect=socket.timeout("timed out")):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("some prompt", [])
 
@@ -135,10 +136,8 @@ class TestQueryLlmP2:
         assert "p2_error" in result["reason"]
 
     def test_oserror_returns_warn(self):
-        """OSError (connection refused) → warn."""
-        conn = MagicMock()
-        conn.request.side_effect = OSError("connection refused")
-        with patch("http.client.HTTPSConnection", return_value=conn):
+        """URLError (connection refused) → warn."""
+        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("connection refused")):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("some prompt", [])
 
@@ -149,10 +148,8 @@ class TestQueryLlmP2:
 
     def test_malformed_json_in_text_returns_warn(self):
         """LLM returns non-JSON text → warn, never raises."""
-        conn = _mock_api_response(
-            200, {"content": [{"type": "text", "text": "I cannot determine..."}]}
-        )
-        with patch("http.client.HTTPSConnection", return_value=conn):
+        body = {"content": [{"type": "text", "text": "I cannot determine..."}]}
+        with patch("urllib.request.urlopen", return_value=_mock_urlopen(body)):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("some prompt", [])
 
@@ -160,8 +157,7 @@ class TestQueryLlmP2:
 
     def test_empty_content_array_returns_warn(self):
         """Empty content list → warn."""
-        conn = _mock_api_response(200, {"content": []})
-        with patch("http.client.HTTPSConnection", return_value=conn):
+        with patch("urllib.request.urlopen", return_value=_mock_urlopen({"content": []})):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("some prompt", [])
 
@@ -170,10 +166,8 @@ class TestQueryLlmP2:
 
     def test_missing_ok_field_defaults_to_pass(self):
         """'ok' field absent → default on-topic (conservative: avoid false positives)."""
-        conn = _mock_api_response(
-            200, {"content": [{"type": "text", "text": '{"reason": "unclear"}'}]}
-        )
-        with patch("http.client.HTTPSConnection", return_value=conn):
+        body = {"content": [{"type": "text", "text": '{"reason": "unclear"}'}]}
+        with patch("urllib.request.urlopen", return_value=_mock_urlopen(body)):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("some prompt", [])
 
@@ -181,13 +175,12 @@ class TestQueryLlmP2:
 
     def test_entire_response_body_is_not_json(self):
         """API body is plain text (e.g. WAF HTML) → warn."""
-        resp = MagicMock()
-        resp.status = 200
-        resp.read.return_value = b"<html>Gateway Error</html>"
-        conn = MagicMock()
-        conn.getresponse.return_value = resp
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b"<html>Gateway Error</html>"
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("http.client.HTTPSConnection", return_value=conn):
+        with patch("urllib.request.urlopen", return_value=mock_resp):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("some prompt", [])
 
@@ -195,8 +188,7 @@ class TestQueryLlmP2:
 
     def test_empty_baseline_messages(self):
         """Empty baseline is handled without error."""
-        conn = _mock_api_response(200, _api_ok(True))
-        with patch("http.client.HTTPSConnection", return_value=conn):
+        with patch("urllib.request.urlopen", return_value=_mock_urlopen(_api_ok(True))):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("some prompt", [])
 
@@ -204,13 +196,12 @@ class TestQueryLlmP2:
 
     def test_empty_response_body_returns_warn(self):
         """200 status but empty body (e.g. network truncation) → warn, not crash."""
-        resp = MagicMock()
-        resp.status = 200
-        resp.read.return_value = b""
-        conn = MagicMock()
-        conn.getresponse.return_value = resp
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b""
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("http.client.HTTPSConnection", return_value=conn):
+        with patch("urllib.request.urlopen", return_value=mock_resp):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("some prompt", [])
 
@@ -219,10 +210,8 @@ class TestQueryLlmP2:
 
     def test_empty_text_field_in_content_returns_warn(self):
         """LLM returns content with empty text (model output empty) → warn, not crash."""
-        conn = _mock_api_response(
-            200, {"content": [{"type": "text", "text": "   "}]}
-        )
-        with patch("http.client.HTTPSConnection", return_value=conn):
+        body = {"content": [{"type": "text", "text": "   "}]}
+        with patch("urllib.request.urlopen", return_value=_mock_urlopen(body)):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("some prompt", [])
 
