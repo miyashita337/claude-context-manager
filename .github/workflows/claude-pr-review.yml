@@ -21,5 +21,6 @@ jobs:
           ANTHROPIC.KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           config.model: "anthropic/claude-sonnet-4-6"
           config.fallback_models: '["anthropic/claude-haiku-4-5-20251001"]'
+          config.language: "ja"
           pr_reviewer.extra_instructions: "日本語でコメントしてください。軽微なスタイル指摘は省略し、バグ・セキュリティリスク・設計上の問題に絞ってください。"
           pr_description.extra_instructions: "日本語でPRの説明を生成してください。"
