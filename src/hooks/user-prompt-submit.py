@@ -170,6 +170,138 @@ def sanitize_stdin(stdin_content: str, hook_name: str) -> str:
     return stdin_content
 
 
+def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
+    """P2: LLM-based judgment for gray zone cases (Haiku API).
+
+    Called only when P1 says WARN and P0 tech veto did NOT trigger.
+    WARN only — never blocks the user.
+
+    Returns:
+        {"decision": "pass"|"warn", "reason": str}
+    """
+    import http.client
+    import os
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return {"decision": "warn", "reason": "p2_unavailable (no API key)"}
+
+    _SYSTEM_PROMPT = (
+        "You are evaluating whether a user's new prompt is off-topic for their current work session.\n\n"
+        "RULES (in priority order):\n"
+        "1. Technical questions, coding, debugging, testing, refactoring → ON-TOPIC\n"
+        "2. Git operations, CI/CD, documentation → ON-TOPIC\n"
+        "3. Questions about a different part of the same project → ON-TOPIC\n"
+        "4. Complete topic changes: weather, sports, news, casual chat, unrelated projects → OFF-TOPIC\n"
+        "5. When in doubt → ON-TOPIC (false positives are more harmful than false negatives)\n\n"
+        "Respond ONLY with JSON. No text outside JSON.\n"
+        'ON-TOPIC:  {"ok": true}\n'
+        'OFF-TOPIC: {"ok": false, "reason": "brief reason (max 20 words)"}'
+    )
+
+    baseline_text = (
+        "\n".join(f"- {m[:200]}" for m in baseline_messages[:3])
+        if baseline_messages
+        else "(session start, no baseline)"
+    )
+    user_content = (
+        f"Session context (initial prompts):\n{baseline_text}\n\n"
+        f"New prompt to evaluate:\n{prompt[:500]}\n\n"
+        "Is this new prompt on-topic for the session?"
+    )
+
+    payload = json.dumps({
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 60,
+        "system": [
+            {
+                "type": "text",
+                "text": _SYSTEM_PROMPT,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
+        "messages": [{"role": "user", "content": user_content}],
+    }).encode()
+
+    try:
+        conn = http.client.HTTPSConnection("api.anthropic.com", timeout=5)
+        conn.request(
+            "POST",
+            "/v1/messages",
+            body=payload,
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "anthropic-beta": "prompt-caching-2024-07-31",
+            },
+        )
+        resp = conn.getresponse()
+        resp_body = resp.read()
+        resp_status = resp.status
+        conn.close()
+
+        if resp_status != 200:
+            return {"decision": "warn", "reason": f"p2_api_error ({resp_status})"}
+
+        data = json.loads(resp_body)
+        content_list = data.get("content", [])
+        if not content_list:
+            return {"decision": "warn", "reason": "p2_empty_response"}
+
+        text = content_list[0].get("text", "")
+        result = json.loads(text.strip())
+
+        if result.get("ok", True):  # missing 'ok' → default on-topic (conservative)
+            return {"decision": "pass", "reason": "p2_on_topic"}
+        return {"decision": "warn", "reason": f"p2_llm: {result.get('reason', 'off-topic')}"}
+
+    except Exception as e:
+        # Any error → preserve P1 WARN (conservative fallback)
+        return {"decision": "warn", "reason": f"p2_error: {str(e)[:50]}"}
+
+
+def _run_detection(current_prompt: str, session_id: str, transcript_path: str) -> dict:
+    """Run full detection pipeline P1 → P0 veto → P2.
+
+    Returns:
+        {"is_deviation": bool, "reason": str}
+    """
+    # P1: embedding server（日本語対応 similarity）
+    p1 = _query_topic_server(current_prompt, session_id, transcript_path)
+
+    if p1["available"] and p1.get("reason") != "no_baseline":
+        # P1: baseline あり → embedding similarity で判定
+        detection = p1
+
+        if detection.get("is_deviation"):
+            # P0 veto: tech keyword があれば PASS に上書き
+            # 例: "Aのバグ"→"Bのバグ" は similarity 低くても tech_context でPASS
+            p0_check = detect_topic_deviation(current_prompt, [])
+            if p0_check["reason"] == "tech_context":
+                detection = {
+                    "is_deviation": False,
+                    "reason": f"p0_tech_veto (p1_sim={p1.get('similarity', '?')})",
+                }
+            else:
+                # P1 WARN + P0 veto なし → P2 LLM 判定（グレーゾーンのみ）
+                baseline = read_user_messages(transcript_path)[:3]
+                p2 = _query_llm_p2(current_prompt, baseline)
+                if p2["decision"] == "pass":
+                    detection = {
+                        "is_deviation": False,
+                        "reason": f"p2_pass ({p2['reason']})",
+                    }
+                else:
+                    detection = {"is_deviation": True, "reason": p2["reason"]}
+    else:
+        # P0 fallback: サーバー停止 or baseline未形成（セッション先頭）
+        recent = read_user_messages(transcript_path)[-5:]
+        detection = detect_topic_deviation(current_prompt, recent)
+
+    return detection
+
+
 def main():
     """Main hook entry point."""
     try:
@@ -204,29 +336,11 @@ def main():
         # Get session stats
         stats = logger.get_session_stats()
 
-        # --- Topic deviation detection: P1 (embedding) → P0 (rule) fallback ---
+        # --- Topic deviation detection: P1 → P0 veto → P2 ---
         additional_parts = [f"Logged user prompt. Session stats: {stats['total_tokens']} tokens"]
 
         try:
-            # P1: embedding server（日本語対応 similarity）
-            p1 = _query_topic_server(user_prompt, session_id, transcript_path)
-
-            if p1["available"] and p1.get("reason") != "no_baseline":
-                # P1: baseline あり → embedding similarity で判定
-                detection = p1
-                # P0 veto: P1がWARNでも技術キーワードがあればPASSに上書き
-                # 例: "Aのバグ"→"Bのバグ" は similarity 低くても tech_context でPASS
-                if detection.get("is_deviation"):
-                    p0_check = detect_topic_deviation(user_prompt, [])
-                    if p0_check["reason"] == "tech_context":
-                        detection = {
-                            "is_deviation": False,
-                            "reason": f"p0_tech_veto (p1_sim={p1.get('similarity', '?')})",
-                        }
-            else:
-                # P0 fallback: サーバー停止 or baseline未形成（セッション先頭）
-                recent = read_user_messages(transcript_path)[-5:]
-                detection = detect_topic_deviation(user_prompt, recent)
+            detection = _run_detection(user_prompt, session_id, transcript_path)
 
             if detection.get("is_deviation"):
                 reason = detection.get("reason", "")
