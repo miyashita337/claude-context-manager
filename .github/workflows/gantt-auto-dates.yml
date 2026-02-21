@@ -1,0 +1,87 @@
+name: Auto set Gantt dates
+
+on:
+  issues:
+    types: [opened, closed]
+
+jobs:
+  set-gantt-dates:
+    runs-on: ubuntu-latest
+    steps:
+      # ISSUEがProjectに追加されるまで少し待つ（auto-add workflowの後に実行するため）
+      - name: Wait for issue to be added to project
+        if: github.event.action == 'opened'
+        run: sleep 15
+
+      - name: Get project item ID for this issue
+        id: get-item
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          PROJECT_ID: PVT_kwHOAAnM1c4BPcBd
+        run: |
+          ITEM_ID=$(gh api graphql -f query='
+            query($nodeId: ID!) {
+              node(id: $nodeId) {
+                ... on Issue {
+                  projectItems(first: 10) {
+                    nodes {
+                      id
+                      project { id }
+                    }
+                  }
+                }
+              }
+            }
+          ' -f nodeId="${{ github.event.issue.node_id }}" \
+          --jq '.data.node.projectItems.nodes[] | select(.project.id == "PVT_kwHOAAnM1c4BPcBd") | .id')
+
+          echo "item_id=$ITEM_ID" >> $GITHUB_OUTPUT
+          echo "Found item ID: $ITEM_ID"
+
+      - name: Set Start date on issue open
+        if: github.event.action == 'opened' && steps.get-item.outputs.item_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          echo "Setting Start date to $TODAY for item ${{ steps.get-item.outputs.item_id }}"
+          gh api graphql -f query='
+            mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $date: Date!) {
+              updateProjectV2ItemFieldValue(input: {
+                projectId: $projectId
+                itemId: $itemId
+                fieldId: $fieldId
+                value: { date: $date }
+              }) {
+                projectV2Item { id }
+              }
+            }
+          ' \
+          -f projectId="PVT_kwHOAAnM1c4BPcBd" \
+          -f itemId="${{ steps.get-item.outputs.item_id }}" \
+          -f fieldId="PVTF_lAHOAAnM1c4BPcBdzg92YI8" \
+          -f date="$TODAY"
+
+      - name: Set Target date on issue close
+        if: github.event.action == 'closed' && steps.get-item.outputs.item_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          echo "Setting Target date to $TODAY for item ${{ steps.get-item.outputs.item_id }}"
+          gh api graphql -f query='
+            mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $date: Date!) {
+              updateProjectV2ItemFieldValue(input: {
+                projectId: $projectId
+                itemId: $itemId
+                fieldId: $fieldId
+                value: { date: $date }
+              }) {
+                projectV2Item { id }
+              }
+            }
+          ' \
+          -f projectId="PVT_kwHOAAnM1c4BPcBd" \
+          -f itemId="${{ steps.get-item.outputs.item_id }}" \
+          -f fieldId="PVTF_lAHOAAnM1c4BPcBdzg92YJA" \
+          -f date="$TODAY"
