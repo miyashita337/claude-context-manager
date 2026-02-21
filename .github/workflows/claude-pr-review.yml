@@ -2,38 +2,25 @@ name: Claude PR Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, develop]
   issue_comment:
     types: [created]
 
 jobs:
-  claude-review:
+  pr_agent:
     runs-on: ubuntu-latest
-    # issue_comment トリガーはPRコメントのみ処理（issueコメントは除外）
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'issue_comment' &&
-       github.event.issue.pull_request != null &&
-       contains(github.event.comment.body, '@claude'))
     permissions:
-      contents: read
-      pull-requests: write
       issues: write
-      id-token: write
+      pull-requests: write
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            このPRを日本語でレビューしてください。以下の観点でコメントしてください：
-            - バグ・ロジックの誤り
-            - セキュリティリスク（機密情報の露出、インジェクション等）
-            - 設計上の問題点
-            - 改善提案（必要な場合のみ）
-
-            軽微なスタイルの指摘は省略し、重要な問題に絞ってください。
+      - uses: qodo-ai/pr-agent@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC.KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          config.model: "anthropic/claude-sonnet-4-6"
+          config.fallback_models: '["anthropic/claude-haiku-4-5-20251001"]'
+          config.language: "ja"
+          pr_reviewer.extra_instructions: "日本語でコメントしてください。軽微なスタイル指摘は省略し、バグ・セキュリティリスク・設計上の問題に絞ってください。"
+          pr_description.extra_instructions: "日本語でPRの説明を生成してください。"
