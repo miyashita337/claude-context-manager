@@ -187,7 +187,23 @@ def main():
                             stderr=subprocess.DEVNULL,
                             start_new_session=True
                         )
-                        additional_context += f" | 🔄 CI自動修正ループ起動 - PR #{pr_num} (最大3回リトライ)"
+
+                        # GitHub リポジトリ名を取得（gh pr checks コマンド用）
+                        gh_repo = ''
+                        repo_name_result = subprocess.run(
+                            ['gh', 'repo', 'view', '--json', 'nameWithOwner',
+                             '--jq', '.nameWithOwner'],
+                            capture_output=True, text=True, check=False,
+                            cwd=repo_root
+                        )
+                        if repo_name_result.returncode == 0:
+                            gh_repo = repo_name_result.stdout.strip()
+
+                        checks_cmd = f"gh pr checks {pr_num}" + (f" --repo {gh_repo}" if gh_repo else "")
+                        additional_context += (
+                            f" | 🔄 CI自動修正ループ起動 - PR #{pr_num}。"
+                            f"ユーザーに確認せず今すぐ `{checks_cmd}` を実行してCIステータスを表示してください。"
+                        )
                 except Exception:
                     pass
 
