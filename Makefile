@@ -1,7 +1,7 @@
 # Claude Context Manager - Makefile
 # 便利なショートカットコマンド集
 
-.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch ci-auto-fix ccusage-report analytics analytics-update validate-analytics review review-latest review-list update-antipatterns install-topic-server start-topic-server stop-topic-server uninstall-topic-server status-topic-server
+.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch ci-auto-fix ccusage-report analytics analytics-update validate-analytics review review-latest review-list update-antipatterns install-topic-server start-topic-server stop-topic-server uninstall-topic-server status-topic-server sync-labels
 
 # デフォルトターゲット: ヘルプを表示
 help:
@@ -40,6 +40,9 @@ help:
 	@echo "  make start-topic-server     - 手動起動"
 	@echo "  make stop-topic-server      - 停止"
 	@echo "  make uninstall-topic-server - launchd から削除"
+	@echo ""
+	@echo "🏷️  ラベル管理:"
+	@echo "  make sync-labels         - GitHub Labels を priority_config.py と同期"
 	@echo ""
 	@echo "🔄 CI/CD:"
 	@echo "  make ci-watch PR=<n>     - PR #nのCI監視（表示のみ）"
@@ -349,3 +352,9 @@ uninstall-topic-server:
 	@launchctl unload $(TOPIC_SERVER_PLIST) 2>/dev/null || true
 	@rm -f $(TOPIC_SERVER_PLIST)
 	@echo "✅ アンインストール完了（sentence-transformers は削除しません）"
+
+# 優先度ラベル管理
+sync-labels:
+	@echo "🏷️  GitHub Labels を priority_config.py と同期中..."
+	@python3 scripts/sync_labels.py
+	@echo "✅ ラベル同期完了"

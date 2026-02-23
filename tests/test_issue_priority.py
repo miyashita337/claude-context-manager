@@ -69,40 +69,40 @@ class TestParsePriority:
         assert parse_priority("null") == DEFAULT_PRIORITY
 
     def test_priority_with_explanation_extracts_priority(self):
-        """'P2 because it is a bug' → P2を抽出"""
-        assert parse_priority("P2 because it is a bug") == "P2"
+        """'High because it is a bug' → Highを抽出"""
+        assert parse_priority("High because it is a bug") == "High"
 
     def test_lowercase_priority_normalized_to_upper(self):
-        """小文字 'p1' → 'P1' に正規化"""
-        assert parse_priority("p1") == "P1"
-        assert parse_priority("p4") == "P4"
+        """小文字 'critical' → 'Critical' に正規化"""
+        assert parse_priority("critical") == "Critical"
+        assert parse_priority("low") == "Low"
 
     def test_priority_with_leading_trailing_whitespace(self):
         """前後空白を除去して正しく返す"""
-        assert parse_priority("  P1  ") == "P1"
+        assert parse_priority("  Critical  ") == "Critical"
 
     def test_priority_with_newline(self):
         """末尾改行を含む場合でも正しく抽出"""
-        assert parse_priority("P3\n") == "P3"
+        assert parse_priority("Medium\n") == "Medium"
 
     def test_priority_embedded_in_long_text(self):
-        """長い説明文の中からP2を抽出"""
-        assert parse_priority("Based on the analysis, this is P2 priority") == "P2"
+        """長い説明文の中からHighを抽出"""
+        assert parse_priority("Based on the analysis, this is High priority") == "High"
 
     # --- 正常パターン ---
 
-    @pytest.mark.parametrize("priority", ["P1", "P2", "P3", "P4"])
+    @pytest.mark.parametrize("priority", ["Critical", "High", "Medium", "Low"])
     def test_valid_priorities_returned_as_is(self, priority):
-        """P1〜P4はそのまま返す"""
+        """Critical/High/Medium/Low はそのまま返す"""
         assert parse_priority(priority) == priority
 
     def test_default_priority_is_p3(self):
-        """デフォルトはP3"""
-        assert DEFAULT_PRIORITY == "P3"
+        """デフォルトはMedium"""
+        assert DEFAULT_PRIORITY == "Medium"
 
     def test_valid_priorities_are_p1_to_p4(self):
-        """有効な優先度はP1〜P4の4種類"""
-        assert set(VALID_PRIORITIES) == {"P1", "P2", "P3", "P4"}
+        """有効な優先度は Critical/High/Medium/Low の4種類"""
+        assert set(VALID_PRIORITIES) == {"Critical", "High", "Medium", "Low"}
 
 
 # ===========================================================================
@@ -137,9 +137,9 @@ class TestBuildPrompt:
         assert "Critical Login Bug" in prompt
 
     def test_prompt_contains_all_priority_definitions(self):
-        """プロンプトにP1〜P4の定義が含まれる"""
+        """プロンプトにCritical/High/Medium/Lowの定義が含まれる"""
         prompt = build_prompt("title", "body")
-        for p in ["P1", "P2", "P3", "P4"]:
+        for p in ["Critical", "High", "Medium", "Low"]:
             assert p in prompt
 
     def test_prompt_instructs_single_word_output(self):
@@ -247,7 +247,7 @@ class TestRemovePriorityLabels:
 
     @patch("subprocess.run")
     def test_all_four_priorities_removed(self, mock_run):
-        """P1,P2,P3,P4が全て除去対象になっている"""
+        """Critical,High,Medium,Lowが全て除去対象になっている"""
         mock_run.return_value = MagicMock(returncode=0)
         remove_priority_labels("1", "owner/repo")
         removed_labels = set()
@@ -255,7 +255,7 @@ class TestRemovePriorityLabels:
             args = c[0][0]
             idx = args.index("--remove-label")
             removed_labels.add(args[idx + 1])
-        assert removed_labels == {"P1", "P2", "P3", "P4"}
+        assert removed_labels == {"Critical", "High", "Medium", "Low"}
 
 
 # ===========================================================================
@@ -315,17 +315,17 @@ class TestGetPriorityFromClaude:
 
     @patch("issue_priority.anthropic.Anthropic")
     def test_api_returns_valid_priority(self, mock_cls):
-        """APIが正常にP2を返す場合"""
+        """APIが正常にHighを返す場合"""
         mock_client = MagicMock()
         mock_cls.return_value = mock_client
-        mock_client.messages.create.return_value.content = [MagicMock(text="P2")]
+        mock_client.messages.create.return_value.content = [MagicMock(text="High")]
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             result = get_priority_from_claude("Login bug", "Users cannot login")
-        assert result == "P2"
+        assert result == "High"
 
     @patch("issue_priority.anthropic.Anthropic")
     def test_api_returns_invalid_falls_back_to_p3(self, mock_cls):
-        """APIが不正値を返した場合はparse_priorityがP3にフォールバック"""
+        """APIが不正値を返した場合はparse_priorityがMediumにフォールバック"""
         mock_client = MagicMock()
         mock_cls.return_value = mock_client
         mock_client.messages.create.return_value.content = [
@@ -333,7 +333,7 @@ class TestGetPriorityFromClaude:
         ]
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             result = get_priority_from_claude("Some issue", "body")
-        assert result == "P3"
+        assert result == "Medium"
 
     @patch("issue_priority.anthropic.Anthropic")
     def test_api_error_propagates(self, mock_cls):
@@ -350,7 +350,7 @@ class TestGetPriorityFromClaude:
         """コスト削減のためclaude-haiku系モデルを使う"""
         mock_client = MagicMock()
         mock_cls.return_value = mock_client
-        mock_client.messages.create.return_value.content = [MagicMock(text="P3")]
+        mock_client.messages.create.return_value.content = [MagicMock(text="Medium")]
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             get_priority_from_claude("title", "body")
         call_kwargs = mock_client.messages.create.call_args[1]
@@ -358,10 +358,10 @@ class TestGetPriorityFromClaude:
 
     @patch("issue_priority.anthropic.Anthropic")
     def test_max_tokens_is_small(self, mock_cls):
-        """P1〜P4のみ返せばよいのでmax_tokensは小さい値（<=32）"""
+        """Critical/High/Medium/Lowのみ返せばよいのでmax_tokensは小さい値（<=32）"""
         mock_client = MagicMock()
         mock_cls.return_value = mock_client
-        mock_client.messages.create.return_value.content = [MagicMock(text="P1")]
+        mock_client.messages.create.return_value.content = [MagicMock(text="Critical")]
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             get_priority_from_claude("title", "body")
         call_kwargs = mock_client.messages.create.call_args[1]
@@ -417,7 +417,7 @@ class TestMain:
     @patch("issue_priority.get_event_data", return_value=FAKE_EVENT_HUMAN)
     @patch("issue_priority.add_priority_label")
     @patch("issue_priority.remove_priority_labels")
-    @patch("issue_priority.get_priority_from_claude", return_value="P2")
+    @patch("issue_priority.get_priority_from_claude", return_value="High")
     def test_normal_flow_removes_then_adds(
         self, mock_claude, mock_remove, mock_add, mock_event
     ):
@@ -425,12 +425,12 @@ class TestMain:
         with patch.dict(os.environ, BASE_ENV):
             issue_priority.main()
         mock_remove.assert_called_once_with("42", "owner/repo")
-        mock_add.assert_called_once_with("42", "owner/repo", "P2")
+        mock_add.assert_called_once_with("42", "owner/repo", "High")
 
     @patch("issue_priority.get_event_data", return_value=FAKE_EVENT_HUMAN)
     @patch("issue_priority.add_priority_label")
     @patch("issue_priority.remove_priority_labels")
-    @patch("issue_priority.get_priority_from_claude", return_value="P1")
+    @patch("issue_priority.get_priority_from_claude", return_value="Critical")
     def test_calls_with_correct_issue_number(
         self, mock_claude, mock_remove, mock_add, mock_event
     ):
@@ -438,12 +438,12 @@ class TestMain:
         with patch.dict(os.environ, BASE_ENV):
             issue_priority.main()
         mock_remove.assert_called_once_with("42", "owner/repo")
-        mock_add.assert_called_once_with("42", "owner/repo", "P1")
+        mock_add.assert_called_once_with("42", "owner/repo", "Critical")
 
     @patch("issue_priority.get_event_data", return_value=FAKE_EVENT_NO_BODY)
     @patch("issue_priority.add_priority_label")
     @patch("issue_priority.remove_priority_labels")
-    @patch("issue_priority.get_priority_from_claude", return_value="P3")
+    @patch("issue_priority.get_priority_from_claude", return_value="Medium")
     def test_none_body_issue_does_not_crash(
         self, mock_claude, mock_remove, mock_add, mock_event
     ):
