@@ -3,8 +3,10 @@
 Issue Priority Auto-Label
 
 GitHub Actions の issues.opened / issues.edited で起動し、
-Claude が P1〜P4 を判定して GitHub ラベルを自動付与する。
+Claude が優先度を判定して GitHub ラベルを自動付与する。
 summary_bot.py と同じ構造で実装。
+
+優先度の定義は priority_config.py で一元管理。
 """
 import json
 import os
@@ -14,8 +16,9 @@ import sys
 
 import anthropic
 
-VALID_PRIORITIES = ["P1", "P2", "P3", "P4"]
-DEFAULT_PRIORITY = "P3"
+from priority_config import DEFAULT_PRIORITY, LABEL_NAMES, PRIORITIES
+
+VALID_PRIORITIES = LABEL_NAMES
 BOT_SENDER = "github-actions[bot]"
 BODY_TRUNCATE = 2000
 
@@ -32,37 +35,41 @@ def is_bot_edit(sender: str) -> bool:
 
 
 def parse_priority(text: str) -> str:
-    """Claude のレスポンスから P1〜P4 を抽出。不正値は P3 にフォールバック。"""
+    """Claude のレスポンスから優先度ラベル名を抽出。不正値は DEFAULT_PRIORITY にフォールバック。"""
     if not text:
         return DEFAULT_PRIORITY
-    # 前後空白除去・大文字化
-    stripped = text.strip().upper()
-    # 完全一致
-    if stripped in VALID_PRIORITIES:
-        return stripped
-    # 文章中の P1〜P4 を探す（例: "P2 because it is a bug"）
-    match = re.search(r"\b(P[1-4])\b", stripped)
+    stripped = text.strip()
+    # 完全一致（大文字小文字を無視）
+    for name in VALID_PRIORITIES:
+        if stripped.lower() == name.lower():
+            return name
+    # 文章中から優先度名を探す（例: "High because it is a bug"）
+    pattern = r"\b(" + "|".join(re.escape(n) for n in VALID_PRIORITIES) + r")\b"
+    match = re.search(pattern, stripped, re.IGNORECASE)
     if match:
-        return match.group(1)
+        # 正規の大文字小文字に正規化して返す
+        matched = match.group(1).lower()
+        for name in VALID_PRIORITIES:
+            if name.lower() == matched:
+                return name
     return DEFAULT_PRIORITY
 
 
 def build_prompt(title: str, body: str) -> str:
-    """Claude に送るプロンプトを生成。body は 2000 文字でトランケート。"""
+    """Claude に送るプロンプトを生成。優先度定義は priority_config から自動生成。"""
     safe_body = (body or "")[:BODY_TRUNCATE]
-    return f"""以下の GitHub Issue の優先度を P1〜P4 の 1 つで答えてください。
+    definitions = "\n".join(f"- {p.name}: {p.definition}" for p in PRIORITIES)
+    valid_names = ", ".join(f'"{n}"' for n in LABEL_NAMES)
+    return f"""以下の GitHub Issue の優先度を答えてください。
 
 定義:
-- P1: 本番障害・セキュリティ脆弱性・データ損失など即時対応必須
-- P2: 主要機能の不具合・リリースブロッカー（数日以内）
-- P3: 軽微な不具合・機能改善（次スプリント）
-- P4: nice-to-have・将来検討
+{definitions}
 
 タイトル: {title}
 本文:
 {safe_body if safe_body else "（本文なし）"}
 
-回答は必ず "P1", "P2", "P3", "P4" のいずれか 1 単語のみ出力してください。"""
+回答は必ず {valid_names} のいずれか 1 単語のみ出力してください。"""
 
 
 def get_priority_from_claude(title: str, body: str) -> str:
@@ -79,7 +86,7 @@ def get_priority_from_claude(title: str, body: str) -> str:
 
 
 def remove_priority_labels(issue_number: str, repo: str) -> None:
-    """P1〜P4 ラベルを全て除去（ラベル未存在時のエラーは無視）"""
+    """全優先度ラベルを除去（ラベル未存在時のエラーは無視）"""
     for priority in VALID_PRIORITIES:
         subprocess.run(
             [
