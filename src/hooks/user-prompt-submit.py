@@ -296,6 +296,9 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
 def _run_detection(current_prompt: str, session_id: str, transcript_path: str) -> dict:
     """Run full detection pipeline P1 → P0 veto → P2.
 
+    P1 available path:  P1 similarity → P0 tech veto → P2 gray zone
+    P0 fallback path:   P0 rule-based → P2 gray zone (Phase 1 P2, Issue #79)
+
     Returns:
         {"is_deviation": bool, "reason": str}
     """
@@ -332,8 +335,24 @@ def _run_detection(current_prompt: str, session_id: str, transcript_path: str) -
                     }
     else:
         # P0 fallback: サーバー停止 or baseline未形成（セッション先頭）
-        recent = read_user_messages(transcript_path)[-5:]
+        all_messages = read_user_messages(transcript_path)
+        recent = all_messages[-5:]
         detection = detect_topic_deviation(current_prompt, recent)
+
+        # Phase 1 P2: グレーゾーン（キーワード未検知）のみ LLM 判定（Issue #79）
+        # P0 が "ok" を返す = テックキーワードも逸脱キーワードも見つからなかった曖昧なケース
+        # このケースだけ LLM に投げて微妙な話題ズレを検知する
+        if detection["reason"] == "ok":
+            baseline = all_messages[:3]
+            if baseline:  # セッション文脈なしでは LLM も判定できないのでスキップ
+                p2 = _query_llm_p2(current_prompt, baseline)
+                if p2["decision"] == "warn":
+                    detection = {
+                        "is_deviation": True,
+                        "reason": p2["reason"],
+                        "judgment_failed": p2.get("judgment_failed", False),
+                    }
+                # P2 PASS → detection は "ok" (PASS) のまま
 
     return detection
 

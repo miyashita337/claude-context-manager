@@ -409,3 +409,99 @@ class TestDetectTopicDeviationP0:
         """Pure tech prompt with no off-topic keywords → PASS."""
         result = ups.detect_topic_deviation("pythonのバグを修正してください", [])
         assert result["is_deviation"] is False
+
+
+# =============================================================================
+# Integration tests: Phase 1 P2 gray zone in P0 fallback path (Issue #79)
+# =============================================================================
+
+class TestRunDetectionP2GrayZone:
+    """P2 LLM judgment is wired into the P0 fallback path for gray zone prompts.
+
+    Gray zone = P0 returns "ok" (no tech keyword hit, no off-topic keyword hit).
+    Phase 1 P2 calls LLM in these cases to catch subtle topic shifts
+    that keyword rules cannot detect (Issue #79).
+    """
+
+    # ── P2 MUST fire (gray zone + baseline exists) ───────────────────────────
+
+    def test_p2_called_for_gray_zone_when_p1_unavailable(self, transcript):
+        """P1 down + P0 gray zone + baseline → P2 invoked.
+
+        Regression: Issue #79 - subtle topic shifts that P0 misses must reach P2.
+        Example: "明日の会議の資料を準備してください" has no keyword hits in P0.
+        """
+        p1 = {"available": False, "reason": "server_not_running"}
+        p2_ret = {"decision": "warn", "reason": "p2_llm: 会議資料はセッションと無関係"}
+        with patch.object(ups, "_query_topic_server", return_value=p1):
+            with patch.object(ups, "_query_llm_p2", return_value=p2_ret) as mock_p2:
+                result = ups._run_detection(
+                    "明日の会議の資料を準備してください", "s1", transcript
+                )
+
+        mock_p2.assert_called_once()
+        assert result["is_deviation"]
+        assert "p2_llm" in result["reason"]
+
+    def test_p2_called_for_gray_zone_when_p1_no_baseline(self, transcript):
+        """P1 available but no baseline (session start) + P0 gray zone → P2 invoked."""
+        p1 = {"available": True, "is_deviation": False, "reason": "no_baseline"}
+        p2_ret = {"decision": "warn", "reason": "p2_llm: 無関係なトピック"}
+        with patch.object(ups, "_query_topic_server", return_value=p1):
+            with patch.object(ups, "_query_llm_p2", return_value=p2_ret) as mock_p2:
+                result = ups._run_detection(
+                    "明日の会議の資料を準備してください", "s1", transcript
+                )
+
+        mock_p2.assert_called_once()
+        assert result["is_deviation"]
+
+    def test_p2_pass_in_gray_zone_keeps_result_pass(self, transcript):
+        """P2 says on-topic in gray zone → final result is PASS (no false positive)."""
+        p1 = {"available": False, "reason": "server_not_running"}
+        p2_ret = {"decision": "pass", "reason": "p2_on_topic"}
+        with patch.object(ups, "_query_topic_server", return_value=p1):
+            with patch.object(ups, "_query_llm_p2", return_value=p2_ret):
+                result = ups._run_detection(
+                    "明日の会議の資料を準備してください", "s1", transcript
+                )
+
+        assert not result["is_deviation"]
+
+    # ── P2 must NOT fire ─────────────────────────────────────────────────────
+
+    def test_p2_not_called_when_p0_clearly_off_topic(self, transcript):
+        """P1 down + P0 clearly off-topic (keyword found) → P2 skipped.
+
+        P0 is already confident; calling P2 adds latency/cost for no benefit.
+        """
+        p1 = {"available": False, "reason": "server_not_running"}
+        with patch.object(ups, "_query_topic_server", return_value=p1):
+            with patch.object(ups, "_query_llm_p2") as mock_p2:
+                result = ups._run_detection("今日の天気は？", "s1", transcript)
+
+        mock_p2.assert_not_called()
+        assert result["is_deviation"]
+
+    def test_p2_not_called_when_p0_tech_context(self, transcript):
+        """P1 down + P0 tech keyword hit → P2 skipped (clear PASS)."""
+        p1 = {"available": False, "reason": "server_not_running"}
+        with patch.object(ups, "_query_topic_server", return_value=p1):
+            with patch.object(ups, "_query_llm_p2") as mock_p2:
+                ups._run_detection("pythonのバグを修正してください", "s1", transcript)
+
+        mock_p2.assert_not_called()
+
+    def test_p2_not_called_when_gray_zone_but_no_baseline(self, tmp_path):
+        """P1 down + gray zone + empty transcript → P2 skipped (no context to judge)."""
+        empty_transcript = str(tmp_path / "empty.jsonl")
+        (tmp_path / "empty.jsonl").write_text("")
+
+        p1 = {"available": False, "reason": "server_not_running"}
+        with patch.object(ups, "_query_topic_server", return_value=p1):
+            with patch.object(ups, "_query_llm_p2") as mock_p2:
+                ups._run_detection(
+                    "明日の会議の資料を準備してください", "s1", empty_transcript
+                )
+
+        mock_p2.assert_not_called()
