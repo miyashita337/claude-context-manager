@@ -7,8 +7,17 @@ P0: Rule-based topic deviation detection (Issue #28)
 """
 
 import json
+import os
 import sys
 from pathlib import Path
+
+# GIT_DIR汚染チェック: vault等の外部GIT_DIRが混入している場合に警告
+_git_dir = os.environ.get("GIT_DIR", "")
+if _git_dir and "vault" in _git_dir.lower():
+    print(
+        f"⚠️  [GIT_DIR汚染検出] GIT_DIR={_git_dir} — git コマンドが意図しないリポジトリを向く可能性あり",
+        file=sys.stderr,
+    )
 
 # Add shared directory to Python path
 sys.path.insert(0, str(Path(__file__).parent / 'shared'))
