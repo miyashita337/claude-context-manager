@@ -183,8 +183,8 @@ class TestHookCommandPaths:
                     continue
                 command = hook.get("command", "")
                 if expected_script in command:
-                    assert command.startswith("python3 "), (
-                        f"Hook command for '{event_type}' must start with 'python3'. "
+                    assert "python3" in command, (
+                        f"Hook command for '{event_type}' must use 'python3'. "
                         f"Got: {command}"
                     )
 
@@ -418,14 +418,14 @@ class TestHookPathSuccess:
 
     @pytest.mark.parametrize("event_type", REQUIRED_HOOK_EVENTS)
     def test_hook_path_command_format_is_correct(self, hooks_config, event_type):
-        """Hook command must follow: python3 "$CLAUDE_PROJECT_DIR/src/hooks/<script>.py" """
+        """Hook command must follow: env -u GIT_DIR -u GIT_WORK_TREE python3 "$CLAUDE_PROJECT_DIR/src/hooks/<script>.py" """
         hooks = hooks_config.get("hooks", {})
         if event_type not in hooks:
             pytest.skip(f"{event_type} not present")
 
         expected_script = EXPECTED_HOOK_FILES[event_type]
         expected_command = (
-            f'python3 "$CLAUDE_PROJECT_DIR/src/hooks/{expected_script}"'
+            f'env -u GIT_DIR -u GIT_WORK_TREE python3 "$CLAUDE_PROJECT_DIR/src/hooks/{expected_script}"'
         )
         event_hooks = hooks[event_type]
 

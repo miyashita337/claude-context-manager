@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/src/hooks/user-prompt-submit.py\"",
+            "command": "env -u GIT_DIR -u GIT_WORK_TREE python3 \"$CLAUDE_PROJECT_DIR/src/hooks/user-prompt-submit.py\"",
             "timeout": 5
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/src/hooks/post-tool-use.py\"",
+            "command": "env -u GIT_DIR -u GIT_WORK_TREE python3 \"$CLAUDE_PROJECT_DIR/src/hooks/post-tool-use.py\"",
             "timeout": 30
           }
         ]
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/src/hooks/stop.py\"",
+            "command": "env -u GIT_DIR -u GIT_WORK_TREE python3 \"$CLAUDE_PROJECT_DIR/src/hooks/stop.py\"",
             "timeout": 10
           }
         ]
