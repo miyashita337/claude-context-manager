@@ -170,6 +170,25 @@ def sanitize_stdin(stdin_content: str, hook_name: str) -> str:
     return stdin_content
 
 
+_VAULT_SIGNATURES = ["my-vault-git", "iCloud~md~obsidian", "my-vault"]
+
+
+def _check_git_env_contamination() -> str | None:
+    """Issue #89: GIT_DIR/GIT_WORK_TREE vault contamination detection.
+
+    Returns warning message string if contaminated, None if clean.
+    """
+    import os
+    git_dir = os.environ.get("GIT_DIR", "")
+    git_work_tree = os.environ.get("GIT_WORK_TREE", "")
+    for sig in _VAULT_SIGNATURES:
+        if sig in git_dir:
+            return f"GIT_DIR が vault を指しています: {git_dir}"
+        if sig in git_work_tree:
+            return f"GIT_WORK_TREE が vault を指しています: {git_work_tree}"
+    return None
+
+
 def _p2_debug_log(msg: str) -> None:
     """Write a debug message to hook-debug.log (best-effort)."""
     debug_log = Path.home() / '.claude' / 'hook-debug.log'
@@ -373,6 +392,35 @@ def main():
 
         # --- Topic deviation detection: P1 → P0 veto → P2 ---
         additional_parts = [f"Logged user prompt. Session stats: {stats['total_tokens']} tokens"]
+
+        # Issue #89: GIT_DIR/GIT_WORK_TREE vault contamination check
+        try:
+            contamination = _check_git_env_contamination()
+            if contamination:
+                additional_parts.append(
+                    f"🚨🚨🚨 [GIT環境汚染] {contamination}。"
+                    " git操作が誤ったリポジトリを向きます。"
+                    " 修正: unset GIT_DIR && unset GIT_WORK_TREE"
+                )
+                try:
+                    import subprocess
+                    script = (
+                        'display alert "🚨 GIT_DIR汚染検出 (Issue #89)" '
+                        'message "GIT_DIR/GIT_WORK_TREEがObsidian vaultを指しています。\\n'
+                        'git操作がすべてmy-vaultに向きます。\\n\\n'
+                        '修正: unset GIT_DIR && unset GIT_WORK_TREE" '
+                        'buttons {"確認"} default button "確認" as critical'
+                    )
+                    subprocess.Popen(
+                        ["osascript", "-e", script],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
         try:
             detection = _run_detection(user_prompt, session_id, transcript_path)
