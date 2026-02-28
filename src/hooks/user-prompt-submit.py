@@ -111,12 +111,13 @@ def detect_topic_deviation(current_prompt: str, recent_messages: list[str]) -> d
     Returns:
         {"is_deviation": bool, "reason": str}
     """
-    text = (current_prompt + ' ' + ' '.join(recent_messages)).lower()
     prompt_lower = current_prompt.lower()
 
-    # Tech keyword present → always PASS (prevents false positives like "天気予報APIの実装")
+    # Tech keyword in CURRENT PROMPT ONLY → PASS (e.g. "天気予報APIの実装" → on-topic)
+    # recent_messages are intentionally NOT checked: combining them caused false negatives
+    # where tech keywords in session history masked off-topic queries (Issue #79).
     for kw in _TECH:
-        if kw in text:
+        if kw in prompt_lower:
             return {"is_deviation": False, "reason": "tech_context"}
 
     # Off-topic keyword in current prompt → WARN

@@ -369,3 +369,43 @@ class TestQueryTopicServer:
             result = ups._query_topic_server("test prompt", "sess1", transcript)
 
         assert result["available"] is False
+
+
+# =============================================================================
+# Unit tests: detect_topic_deviation() P0 rule-based detection
+# =============================================================================
+
+class TestDetectTopicDeviationP0:
+    """Tests for P0 rule-based off-topic detection (Issue #79 regression)."""
+
+    def test_off_topic_detected_despite_tech_keywords_in_recent_messages(self):
+        """Off-topic current prompt is flagged even when recent messages contain tech keywords.
+
+        Regression test for Issue #79: 長文テクニカルセッション中の話題逸脱が未検知。
+        Previous code checked combined text (current + recent), so tech keywords in
+        recent messages would veto detection of off-topic current prompts.
+        """
+        recent_tech_messages = [
+            "fix the authentication bug in auth.py",
+            "add unit tests for the login function",
+            "python: refactor the session module",
+        ]
+        result = ups.detect_topic_deviation("今日の天気は？", recent_tech_messages)
+        assert result["is_deviation"] is True
+        assert "天気" in result["reason"]
+
+    def test_tech_keyword_in_current_prompt_prevents_false_positive(self):
+        """Tech keyword in current prompt (e.g. 天気予報APIの実装) → PASS (no false positive)."""
+        result = ups.detect_topic_deviation("天気予報APIの実装について教えて", [])
+        assert result["is_deviation"] is False
+        assert result["reason"] == "tech_context"
+
+    def test_off_topic_detected_with_no_recent_context(self):
+        """Off-topic prompt detected when no recent messages provided."""
+        result = ups.detect_topic_deviation("今日のランチは何にしようか", [])
+        assert result["is_deviation"] is True
+
+    def test_pure_tech_prompt_passes(self):
+        """Pure tech prompt with no off-topic keywords → PASS."""
+        result = ups.detect_topic_deviation("pythonのバグを修正してください", [])
+        assert result["is_deviation"] is False
