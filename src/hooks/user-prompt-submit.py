@@ -7,8 +7,17 @@ P0: Rule-based topic deviation detection (Issue #28)
 """
 
 import json
+import os
 import sys
 from pathlib import Path
+
+# GIT_DIR汚染チェック: vault等の外部GIT_DIRが混入している場合に警告
+_git_dir = os.environ.get("GIT_DIR", "")
+if _git_dir and "vault" in _git_dir.lower():
+    print(
+        f"⚠️  [GIT_DIR汚染検出] GIT_DIR={_git_dir} — git コマンドが意図しないリポジトリを向く可能性あり",
+        file=sys.stderr,
+    )
 
 # Add shared directory to Python path
 sys.path.insert(0, str(Path(__file__).parent / 'shared'))
@@ -111,12 +120,13 @@ def detect_topic_deviation(current_prompt: str, recent_messages: list[str]) -> d
     Returns:
         {"is_deviation": bool, "reason": str}
     """
-    text = (current_prompt + ' ' + ' '.join(recent_messages)).lower()
     prompt_lower = current_prompt.lower()
 
-    # Tech keyword present → always PASS (prevents false positives like "天気予報APIの実装")
+    # Tech keyword in CURRENT PROMPT ONLY → PASS (e.g. "天気予報APIの実装" → on-topic)
+    # recent_messages are intentionally NOT checked: combining them caused false negatives
+    # where tech keywords in session history masked off-topic queries (Issue #79).
     for kw in _TECH:
-        if kw in text:
+        if kw in prompt_lower:
             return {"is_deviation": False, "reason": "tech_context"}
 
     # Off-topic keyword in current prompt → WARN
@@ -295,6 +305,9 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
 def _run_detection(current_prompt: str, session_id: str, transcript_path: str) -> dict:
     """Run full detection pipeline P1 → P0 veto → P2.
 
+    P1 available path:  P1 similarity → P0 tech veto → P2 gray zone
+    P0 fallback path:   P0 rule-based → P2 gray zone (Phase 1 P2, Issue #79)
+
     Returns:
         {"is_deviation": bool, "reason": str}
     """
@@ -331,8 +344,24 @@ def _run_detection(current_prompt: str, session_id: str, transcript_path: str) -
                     }
     else:
         # P0 fallback: サーバー停止 or baseline未形成（セッション先頭）
-        recent = read_user_messages(transcript_path)[-5:]
+        all_messages = read_user_messages(transcript_path)
+        recent = all_messages[-5:]
         detection = detect_topic_deviation(current_prompt, recent)
+
+        # Phase 1 P2: グレーゾーン（キーワード未検知）のみ LLM 判定（Issue #79）
+        # P0 が "ok" を返す = テックキーワードも逸脱キーワードも見つからなかった曖昧なケース
+        # このケースだけ LLM に投げて微妙な話題ズレを検知する
+        if detection["reason"] == "ok":
+            baseline = all_messages[:3]
+            if baseline:  # セッション文脈なしでは LLM も判定できないのでスキップ
+                p2 = _query_llm_p2(current_prompt, baseline)
+                if p2["decision"] == "warn":
+                    detection = {
+                        "is_deviation": True,
+                        "reason": p2["reason"],
+                        "judgment_failed": p2.get("judgment_failed", False),
+                    }
+                # P2 PASS → detection は "ok" (PASS) のまま
 
     return detection
 
