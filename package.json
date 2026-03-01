@@ -18,9 +18,9 @@
     "test:python": "python3 -m pytest tests/ -v --cov=src/hooks",
     "test:all": "npm run test:python && npm test",
     "test:ci": "npm run test:python -- --cov-report=xml && npm test -- --coverage",
-    "lint:python": "python3 -m flake8 src/hooks --count --select=E9,F63,F7,F82 --show-source --statistics",
-    "format:python": "python3 -m black src/hooks tests",
-    "format:check": "python3 -m black --check src/hooks tests",
+    "lint:python": "python3 -m flake8 src/hooks src/session-title --count --select=E9,F63,F7,F82 --show-source --statistics",
+    "format:python": "python3 -m black src/hooks src/session-title tests",
+    "format:check": "python3 -m black --check src/hooks src/session-title tests",
     "status": "tsx src/cli/index.ts status",
     "search": "tsx src/cli/index.ts search"
   },

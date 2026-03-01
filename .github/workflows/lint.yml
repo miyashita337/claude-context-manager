@@ -26,15 +26,15 @@ jobs:
         pip install ruff black isort
 
     - name: Run ruff
-      run: ruff check src/hooks/
+      run: ruff check src/hooks/ src/session-title/
       continue-on-error: true
 
     - name: Check formatting with black
-      run: black --check src/hooks/
+      run: black --check src/hooks/ src/session-title/
       continue-on-error: true
 
     - name: Check import sorting with isort
-      run: isort --check-only src/hooks/
+      run: isort --check-only src/hooks/ src/session-title/
       continue-on-error: true
 
   typescript-lint:
