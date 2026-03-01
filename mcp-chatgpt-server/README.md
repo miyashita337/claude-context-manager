@@ -62,6 +62,32 @@ ChatGPTに質問を送信して回答を取得
 - 使用モデル名
 - トークン使用量 (prompt/completion/total)
 
+### generate-diagramツール（Nano Banana）
+
+Gemini画像モデルを使って概念図やドキュメント用画像を生成。フローチャートやアーキテクチャ図にはMermaidを使用してください。
+
+**必要な環境変数:**
+- `GEMINI_API_KEY` (必須): Gemini APIキー
+- `NANOBANANA_MODEL` (オプション): 使用モデル (デフォルト: `gemini-3.1-flash-image-preview`)
+
+**パラメータ:**
+- `prompt` (必須): 生成したい画像の説明
+- `filename` (オプション): 出力ファイル名（省略時は自動生成）
+- `output_dir` (オプション): 保存先ディレクトリ（デフォルト: `docs/images/`）
+- `aspect_ratio` (オプション): アスペクト比（デフォルト: `16:9`）
+  - 選択肢: `1:1`, `16:9`, `4:3`, `3:4`, `9:16`
+- `resolution` (オプション): 解像度（デフォルト: `2K`）
+  - 選択肢: `512px`, `1K`, `2K`, `4K`
+
+**使用例:**
+```
+概念図を生成して：「マイクロサービス間のイベント駆動通信パターン」
+```
+
+**対応モデル:**
+- `gemini-3.1-flash-image-preview` (デフォルト)
+- 環境変数 `NANOBANANA_MODEL` で他モデルも指定可能
+
 ## テスト方法
 
 ### MCP Inspectorでテスト
@@ -86,6 +112,7 @@ npx @modelcontextprotocol/inspector node build/index.js
 - `npm run watch`: ファイル変更を監視して自動ビルド
 - `npm run dev`: ビルド後にサーバーを起動
 - `npm start`: ビルド済みサーバーを起動
+- `npm test`: ユニットテスト実行（vitest）
 
 ## トラブルシューティング
 

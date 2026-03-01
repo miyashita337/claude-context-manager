@@ -28,6 +28,9 @@ export const config = {
   geminiTemperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.7'),
   geminiMaxTokens: parseInt(process.env.GEMINI_MAX_TOKENS || '2000', 10),
 
+  // Nano Banana settings (uses geminiApiKey)
+  nanoBananaModel: process.env.NANOBANANA_MODEL || 'gemini-3.1-flash-image-preview',
+
   // Legacy aliases for backward compatibility
   get defaultModel() { return this.openaiModel; },
   get defaultTemperature() { return this.openaiTemperature; },
