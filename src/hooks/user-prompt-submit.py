@@ -49,6 +49,15 @@ _TECH = [
     'セッション', 'analytics', 'hook', 'claude', 'llm', 'token',
 ]
 
+# Question scatter detection markers (Issue #96)
+_QUESTION_MARKERS = [
+    '？', '?',
+    'なぜ', 'どうして', 'なんで',
+    'どう違う', '違いは', '比較',
+    'それぞれ', '各々',
+    'あと、', 'ついでに', 'もう一つ',
+]
+
 
 def read_user_messages(transcript_path: str) -> list[str]:
     """Read ALL user messages (chronological) from session JSONL transcript."""
@@ -128,6 +137,28 @@ def detect_topic_deviation(current_prompt: str, recent_messages: list[str]) -> d
         }
 
     return {"is_deviation": False, "reason": "ok"}
+
+
+def detect_question_scatter(prompt: str) -> dict:
+    """Detect question scatter pattern (multiple independent questions in one prompt)."""
+    question_marks = prompt.count('？') + prompt.count('?')
+    marker_count = sum(1 for m in _QUESTION_MARKERS if m in prompt)
+    if question_marks >= 3 or marker_count >= 4:
+        return {"is_scatter": True, "question_count": max(question_marks, marker_count)}
+    return {"is_scatter": False, "question_count": question_marks}
+
+
+def compute_question_density(transcript_path: str, window: int = 5) -> float:
+    """Compute average question marks per message over recent window."""
+    try:
+        messages = read_user_messages(transcript_path)
+    except Exception:
+        return 0.0
+    recent = messages[-window:]
+    if not recent:
+        return 0.0
+    total_questions = sum(m.count('？') + m.count('?') for m in recent)
+    return total_questions / len(recent)
 
 
 def sanitize_stdin(stdin_content: str, hook_name: str) -> str:
@@ -445,6 +476,33 @@ def main():
                     pass  # 通知失敗はユーザーをブロックしない
         except Exception:
             pass  # Detection failure must never block user
+
+        # --- Question scatter detection (independent of topic deviation) ---
+        try:
+            scatter = detect_question_scatter(user_prompt)
+            density = compute_question_density(transcript_path) if transcript_path else 0.0
+
+            if scatter["is_scatter"] or density > 3.0:
+                parts = []
+                if scatter["is_scatter"]:
+                    parts.append(f"単発{scatter['question_count']}個検知")
+                if density > 3.0:
+                    parts.append(f"累積密度{density:.1f}")
+                detail = "・".join(parts)
+                additional_parts.append(
+                    f"💡 [質問散弾パターン検知] ユーザーのプロンプトに複数の話題が"
+                    f"含まれている可能性があります（{detail}）。"
+                    f"対応フロー: "
+                    f"(1) プロンプトを独立したタスクに分解してください"
+                    f"（同一タスクの異なる側面は分けない。"
+                    f"例:「バグの原因？直し方？テスト？」は1タスク） "
+                    f"(2) 独立タスクが2つ以上の場合、各タスクをGitHub issueとして"
+                    f"登録するかユーザーに確認してください "
+                    f"(3) 承認されたら gh issue create で各タスクのissueを作成 "
+                    f"(4) 最も優先度の高い質問からステップバイステップで回答"
+                )
+        except Exception:
+            pass  # 検知失敗はユーザーをブロックしない
 
         # Return success with hookEventName
         print(json.dumps({
