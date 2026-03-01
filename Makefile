@@ -1,7 +1,7 @@
 # Claude Context Manager - Makefile
 # 便利なショートカットコマンド集
 
-.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch ci-auto-fix ccusage-report analytics analytics-update validate-analytics review review-latest review-list update-antipatterns install-topic-server start-topic-server stop-topic-server uninstall-topic-server status-topic-server sync-labels
+.PHONY: help install test test-python test-ts test-all test-watch clean build dev lint format format-check startup-check pre-git-check git-clean git-safe-push git-hooks validate-hooks test-hooks fix-hooks backup-hooks restore-hooks ci-watch ci-auto-fix ccusage-report analytics analytics-update validate-analytics review review-latest review-list update-antipatterns install-topic-server start-topic-server stop-topic-server uninstall-topic-server status-topic-server sync-labels install-session-title uninstall-session-title
 
 # デフォルトターゲット: ヘルプを表示
 help:
@@ -33,6 +33,10 @@ help:
 	@echo "  make review-latest        - 最新セッションをキャッシュ"
 	@echo "  make review-list          - 既存レビュー一覧表示"
 	@echo "  make update-antipatterns  - /antipatterns スキルの更新チェック"
+	@echo ""
+	@echo "🏷️  セッションタイトル (Issue #109):"
+	@echo "  make install-session-title   - セッションタイトルhookをインストール"
+	@echo "  make uninstall-session-title - セッションタイトルhookをアンインストール"
 	@echo ""
 	@echo "🧠 話題逸脱検出サーバー (Issue #28):"
 	@echo "  make install-topic-server   - sentence-transformers インストール + launchd 登録"
@@ -313,6 +317,26 @@ update-antipatterns:
 	@echo "  /fact-check \"Verify antipatterns match official docs at code.claude.com/docs/en/best-practices\""
 	@echo ""
 	@echo "💡 30日以上経過している場合は更新を推奨します"
+
+# ============================================================
+# セッションタイトル管理 (Issue #109)
+# ============================================================
+
+install-session-title:
+	@echo "🏷️  セッションタイトルhookをインストール中..."
+	@chmod +x src/session-title/install.sh
+	@src/session-title/install.sh
+
+uninstall-session-title:
+	@echo "🏷️  セッションタイトルhookをアンインストール中..."
+	@rm -f ~/.claude/scripts/session_title_utils.py
+	@rm -f ~/.claude/scripts/session-start-title.py
+	@rm -f ~/.claude/scripts/prompt-title-check.py
+	@rm -f ~/.claude/scripts/statusline.py
+	@rm -rf ~/.claude/skills/title
+	@rm -rf ~/.claude/session-titles
+	@echo "✅ アンインストール完了"
+	@echo "Note: ~/.claude/settings.json の SessionStart/UserPromptSubmit/StatusLine エントリは手動で削除してください"
 
 # ============================================================
 # 話題逸脱検出サーバー管理 (Issue #28)
