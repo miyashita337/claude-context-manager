@@ -11,7 +11,8 @@
     "build": "tsc",
     "watch": "tsc --watch",
     "dev": "tsc && node build/index.js",
-    "start": "node build/index.js"
+    "start": "node build/index.js",
+    "test": "vitest run"
   },
   "keywords": [
     "mcp",
@@ -22,6 +23,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@google/genai": "^1.43.0",
     "@google/generative-ai": "^0.24.1",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "commander": "^14.0.3",
@@ -31,6 +33,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.18"
   }
 }

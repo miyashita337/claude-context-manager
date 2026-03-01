@@ -100,3 +100,7 @@ credentials.json.old
 # Analytics generated files
 .claude/analytics/dashboard/dashboard.html
 .claude/analytics/dashboard/analytics.json
+
+# Generated images (Nano Banana)
+docs/images/*
+!docs/images/.gitkeep

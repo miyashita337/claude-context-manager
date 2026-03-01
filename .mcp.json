@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "nanobanana": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["mcp-chatgpt-server/build/index.js"],
+      "env": {
+        "CLAUDE_PROJECT_DIR": "${workspaceFolder}"
+      }
+    }
+  }
+}

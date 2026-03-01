@@ -5,6 +5,7 @@ import {
   CallToolRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { ChatCompletionArgsSchema, callChatGPT } from './tools/chat-completion.js';
+import { NanoBananaArgsSchema, generateDiagram } from './tools/nanobanana.js';
 
 // MCPサーバーの作成
 export function createServer() {
@@ -54,6 +55,38 @@ export function createServer() {
             required: ['prompt'],
           },
         },
+        {
+          name: 'generate-diagram',
+          description: 'Generate a conceptual diagram or documentation image using Nano Banana (Gemini image model). Saves to docs/images/. NOT for flowcharts/architecture (use Mermaid).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              prompt: {
+                type: 'string',
+                description: 'Description of the image to generate',
+              },
+              filename: {
+                type: 'string',
+                description: 'Output filename (auto-generated if omitted)',
+              },
+              output_dir: {
+                type: 'string',
+                description: 'Output directory (default: docs/images/)',
+              },
+              aspect_ratio: {
+                type: 'string',
+                description: 'Aspect ratio (default: 16:9)',
+                enum: ['1:1', '16:9', '4:3', '3:4', '9:16'],
+              },
+              resolution: {
+                type: 'string',
+                description: 'Resolution (default: 2K)',
+                enum: ['512px', '1K', '2K', '4K'],
+              },
+            },
+            required: ['prompt'],
+          },
+        },
       ],
     };
   });
@@ -78,6 +111,26 @@ export function createServer() {
                 ? `\n\n[Tokens used: ${response.usage.total_tokens} (prompt: ${response.usage.prompt_tokens}, completion: ${response.usage.completion_tokens})]`
                 : ''
             }`,
+          },
+        ],
+      };
+    }
+
+    if (name === 'generate-diagram') {
+      const validatedArgs = NanoBananaArgsSchema.parse(args);
+      const result = await generateDiagram(validatedArgs);
+
+      if (!result.imagePath) {
+        return {
+          content: [{ type: 'text', text: `No image generated.\n\n${result.description}` }],
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Image saved: ${result.imagePath}\nModel: ${result.model}\nMIME: ${result.mimeType}\n\n${result.description}`,
           },
         ],
       };
