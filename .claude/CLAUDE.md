@@ -100,6 +100,7 @@ Closes #XX  ← 必須。これがないとISSUEが自動Closeされない。
 
 ## ドキュメント管理
 各ドキュメントの役割は README.md を参照。重複を避け、簡潔に保つ。
+- [workflow-guide.md](.claude/docs/workflow-guide.md) - トークン効率改善ワークフロー
 
 ---
 

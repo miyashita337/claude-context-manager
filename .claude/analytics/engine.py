@@ -311,6 +311,7 @@ def analyze_bottlenecks(raw_events):
     # Track file access across Read, Edit, Write AND Bash cat/head/tail
     file_access_counts = defaultdict(list)  # file_path -> [msg_indices]
     tool_sequence = []  # (tool_name, msg_index) for consecutive detection
+    user_question_counts = []
     # Full token count: input + cache_read + cache_create (= real context size)
     per_msg_full_tokens = []  # (msg_index, full_tokens, input, cache_read, cache_create)
     per_msg_waste = defaultdict(int)  # msg_index -> estimated waste tokens
@@ -358,6 +359,16 @@ def analyze_bottlenecks(raw_events):
                                 "value": text_len,
                             })
                             per_msg_waste[msg_index] += text_len // 4
+
+            # --- Question scatter tracking ---
+            content = event.get("message", {}).get("content", "")
+            if isinstance(content, list):
+                text_parts = [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
+                q_text = " ".join(text_parts)
+            else:
+                q_text = str(content)
+            q_count = q_text.count("\uff1f") + q_text.count("?")
+            user_question_counts.append(q_count)
 
         elif etype == "assistant":
             msg = event.get("message", {})
@@ -442,6 +453,18 @@ def analyze_bottlenecks(raw_events):
                 run_start = i
         _check_tool_run(tool_sequence, run_start, len(tool_sequence), issues, per_msg_waste)
 
+    # --- Question scatter analysis ---
+    if user_question_counts:
+        avg_q = sum(user_question_counts) / len(user_question_counts)
+        if avg_q > 2.5:
+            issues.append({
+                "type": "question_scatter",
+                "avg_questions_per_msg": round(avg_q, 2),
+                "total_user_messages": len(user_question_counts),
+                "detail": f"Avg {avg_q:.1f} questions/msg across {len(user_question_counts)} messages",
+                "value": round(avg_q, 2),
+            })
+
     # --- Bottleneck score ---
     # Weighted by actual measured impact, not just count
     score = 0.0
@@ -456,6 +479,8 @@ def analyze_bottlenecks(raw_events):
             score += min(15, (issue["full_tokens"] - issue["session_avg"]) / 10000)
         elif itype == "tool_loop":
             score += issue["value"] * 1.5
+        elif itype == "question_scatter":
+            score += min(10, (issue.get("value", 2.5) - 2.5) * 10)
     score = min(100, int(score))
 
     # --- Top wasteful messages ---

@@ -71,6 +71,17 @@ description: Official Claude Code anti-patterns from code.claude.com/docs/en/bes
 
 ---
 
+### AP-6: question scatter（質問散弾）
+- **症状**: 1プロンプトに独立した質問を3つ以上詰め込む
+- **影響**: トークン2〜3倍膨張、回答品質低下
+- **検出**:
+  - `bottleneck_report.issue_counts.question_scatter >= 1`
+  - セッション内平均質問密度 > 3.0/msg
+- **対策**: 質問をGitHub issueに分割、1プロンプト1トピック
+- **参考**: [workflow-guide.md](../../docs/workflow-guide.md)
+
+---
+
 ## 照合結果テンプレート（review.md 用）
 
 ```markdown
@@ -81,4 +92,5 @@ description: Official Claude Code anti-patterns from code.claude.com/docs/en/bes
 | AP-3: over-specified CLAUDE.md | N/A | セッションから判定不可 |
 | AP-4: trust-then-verify gap | ✅/❌ | {Bash usage or lack thereof} |
 | AP-5: infinite exploration | ✅/❌ | {repeated_file_read or large_tool_result count} |
+| AP-6: question scatter | ✅/❌ | {question_scatter count, avg density} |
 ```

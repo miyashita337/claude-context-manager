@@ -33,6 +33,10 @@ def _load_ups():
 
 ups = _load_ups()
 
+# ── convenience aliases for new functions (#96/#97) ───────────────────────────
+detect_question_scatter = getattr(ups, "detect_question_scatter", None)
+compute_question_density = getattr(ups, "compute_question_density", None)
+
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -369,3 +373,202 @@ class TestQueryTopicServer:
             result = ups._query_topic_server("test prompt", "sess1", transcript)
 
         assert result["available"] is False
+
+
+# =============================================================================
+# Unit tests: detect_question_scatter() — #96
+# =============================================================================
+
+class TestDetectQuestionScatter:
+    """#96: Question scatter pattern detection."""
+
+    def test_three_fullwidth_question_marks(self):
+        result = detect_question_scatter("これは何？どうする？なぜ？")
+        assert result["is_scatter"] is True
+
+    def test_three_ascii_question_marks(self):
+        result = detect_question_scatter("what? how? why?")
+        assert result["is_scatter"] is True
+
+    def test_mixed_question_marks_three(self):
+        result = detect_question_scatter("何？what? なぜ？")
+        assert result["is_scatter"] is True
+
+    def test_four_markers_no_question_marks(self):
+        result = detect_question_scatter("なぜこうなるのか、どうしてこうなのか、比較してほしい、それぞれ教えて")
+        assert result["is_scatter"] is True
+
+    def test_ten_question_marks(self):
+        result = detect_question_scatter("?" * 10)
+        assert result["is_scatter"] is True
+        assert result["question_count"] >= 10
+
+    def test_one_question_mark(self):
+        result = detect_question_scatter("これは何？")
+        assert result["is_scatter"] is False
+
+    def test_two_question_marks(self):
+        result = detect_question_scatter("何？どう？")
+        assert result["is_scatter"] is False
+
+    def test_no_questions(self):
+        result = detect_question_scatter("コードを修正してください")
+        assert result["is_scatter"] is False
+
+    def test_empty_string(self):
+        result = detect_question_scatter("")
+        assert result["is_scatter"] is False
+        assert result["question_count"] == 0
+
+    def test_three_markers_below_threshold(self):
+        result = detect_question_scatter("なぜこうなのか、どうして動かないのか、比較して")
+        assert result["is_scatter"] is False
+
+    def test_url_with_single_question_mark(self):
+        result = detect_question_scatter("https://example.com/search?q=test を見てください")
+        assert result["is_scatter"] is False
+
+    def test_question_count_accuracy(self):
+        result = detect_question_scatter("？？？？？")
+        assert result["question_count"] == 5
+
+
+# =============================================================================
+# Unit tests: compute_question_density() — #97
+# =============================================================================
+
+class TestComputeQuestionDensity:
+    """#97: Session cumulative question density tracking."""
+
+    def _write_transcript(self, tmp_path, messages):
+        """Helper to write a fake transcript JSONL."""
+        path = tmp_path / "transcript.jsonl"
+        lines = []
+        for msg in messages:
+            lines.append(json.dumps({
+                "type": "user",
+                "message": {"role": "user", "content": msg}
+            }))
+        path.write_text("\n".join(lines), encoding="utf-8")
+        return str(path)
+
+    def test_high_density(self, tmp_path):
+        # 5 messages, each with 4 question marks = avg 4.0
+        path = self._write_transcript(tmp_path, ["？？？？"] * 5)
+        density = compute_question_density(path)
+        assert density == pytest.approx(4.0)
+
+    def test_boundary_exactly_3(self, tmp_path):
+        # 5 messages, each with 3 question marks = avg 3.0 (NOT > 3.0, should not fire)
+        path = self._write_transcript(tmp_path, ["？？？"] * 5)
+        density = compute_question_density(path)
+        assert density == pytest.approx(3.0)
+
+    def test_normal_density(self, tmp_path):
+        path = self._write_transcript(tmp_path, ["質問？"] * 5)
+        density = compute_question_density(path)
+        assert density == pytest.approx(1.0)
+
+    def test_zero_density(self, tmp_path):
+        path = self._write_transcript(tmp_path, ["コード修正"] * 5)
+        density = compute_question_density(path)
+        assert density == 0.0
+
+    def test_empty_transcript(self, tmp_path):
+        path = tmp_path / "transcript.jsonl"
+        path.write_text("", encoding="utf-8")
+        density = compute_question_density(str(path))
+        assert density == 0.0
+
+    def test_nonexistent_file(self, tmp_path):
+        density = compute_question_density(str(tmp_path / "nonexistent.jsonl"))
+        assert density == 0.0
+
+    def test_window_limits(self, tmp_path):
+        # 10 messages: first 7 have 0 questions, last 3 have 6 each
+        msgs = ["テスト"] * 7 + ["？？？？？？"] * 3
+        path = self._write_transcript(tmp_path, msgs)
+        density = compute_question_density(path, window=3)
+        assert density == pytest.approx(6.0)
+
+    def test_fewer_messages_than_window(self, tmp_path):
+        path = self._write_transcript(tmp_path, ["？？"] * 2)
+        density = compute_question_density(path, window=5)
+        assert density == pytest.approx(2.0)
+
+    def test_mixed_fullwidth_halfwidth(self, tmp_path):
+        path = self._write_transcript(tmp_path, ["？?？?？"] * 5)
+        density = compute_question_density(path)
+        assert density == pytest.approx(5.0)
+
+
+# =============================================================================
+# Integration tests: scatter detection in main() — #96/#97
+# =============================================================================
+
+class TestScatterIntegration:
+    """Integration: scatter detection in main() additionalContext."""
+
+    @patch.object(ups, "SessionLogger")
+    @patch.object(ups, "_run_detection")
+    def test_scatter_detected_additional_context(self, mock_detection, mock_logger, tmp_path, capsys):
+        """When scatter detected, additionalContext should contain guidance."""
+        mock_detection.return_value = {"is_deviation": False, "reason": ""}
+        mock_logger_instance = MagicMock()
+        mock_logger_instance.get_session_stats.return_value = {"total_tokens": 100}
+        mock_logger.return_value = mock_logger_instance
+
+        # Create a transcript with high density
+        transcript = tmp_path / "t.jsonl"
+        transcript.write_text(
+            "\n".join(json.dumps({"type": "user", "message": {"role": "user", "content": "？？？？"}}) for _ in range(5)),
+            encoding="utf-8"
+        )
+
+        input_data = json.dumps({
+            "session_id": "test-session",
+            "prompt": "これは何？どうする？なぜ？",
+            "transcript_path": str(transcript)
+        })
+
+        from io import StringIO
+        with patch("sys.stdin", StringIO(input_data)):
+            with pytest.raises(SystemExit):
+                ups.main()
+
+        output = capsys.readouterr().out
+        result = json.loads(output)
+        ctx = result.get("hookSpecificOutput", {}).get("additionalContext", "")
+        assert "質問散弾パターン検知" in ctx
+        assert "gh issue create" in ctx
+
+    @patch.object(ups, "SessionLogger")
+    @patch.object(ups, "_run_detection")
+    def test_no_scatter_no_issue_guidance(self, mock_detection, mock_logger, tmp_path, capsys):
+        """When no scatter, additionalContext should not contain issue guidance."""
+        mock_detection.return_value = {"is_deviation": False, "reason": ""}
+        mock_logger_instance = MagicMock()
+        mock_logger_instance.get_session_stats.return_value = {"total_tokens": 100}
+        mock_logger.return_value = mock_logger_instance
+
+        transcript = tmp_path / "t.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "user", "message": {"role": "user", "content": "修正して"}}),
+            encoding="utf-8"
+        )
+
+        input_data = json.dumps({
+            "session_id": "test-session",
+            "prompt": "バグを修正してください",
+            "transcript_path": str(transcript)
+        })
+
+        from io import StringIO
+        with patch("sys.stdin", StringIO(input_data)):
+            with pytest.raises(SystemExit):
+                ups.main()
+
+        output = capsys.readouterr().out
+        result = json.loads(output)
+        ctx = result.get("hookSpecificOutput", {}).get("additionalContext", "")
+        assert "gh issue create" not in ctx
