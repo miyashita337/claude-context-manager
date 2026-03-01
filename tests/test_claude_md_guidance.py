@@ -8,7 +8,13 @@ _WORKTREE = pathlib.Path(__file__).resolve().parent.parent
 _WORKFLOW_GUIDE = _WORKTREE / ".claude" / "docs" / "workflow-guide.md"
 _PROJECT_CLAUDE_MD = _WORKTREE / ".claude" / "CLAUDE.md"
 
+_skip_no_global = pytest.mark.skipif(
+    not _GLOBAL_CLAUDE_MD.exists(),
+    reason="~/.claude/CLAUDE.md not available (CI environment)",
+)
 
+
+@_skip_no_global
 class TestCLAUDEMdGuidance:
     """#93: Global CLAUDE.md guidance rules."""
 

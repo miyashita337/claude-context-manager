@@ -480,7 +480,7 @@ def analyze_bottlenecks(raw_events):
         elif itype == "tool_loop":
             score += issue["value"] * 1.5
         elif itype == "question_scatter":
-            score += min(10, (issue.get("value", 0) - 2.5) * 10)
+            score += min(10, (issue.get("value", 2.5) - 2.5) * 10)
     score = min(100, int(score))
 
     # --- Top wasteful messages ---
