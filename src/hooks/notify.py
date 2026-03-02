@@ -156,7 +156,7 @@ def call_haiku(api_key: str, project_title: str, transcript: str) -> dict:
         },
     )
 
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    with urllib.request.urlopen(req, timeout=10) as resp:  # nosemgrep: dynamic-urllib-use-detected  # noqa: URL is hardcoded Anthropic API endpoint
         data = json.loads(resp.read().decode("utf-8"))
         text = data["content"][0]["text"].strip()
         start = text.find("{")
