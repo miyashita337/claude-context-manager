@@ -358,3 +358,35 @@ sync-labels:
 	@echo "🏷️  GitHub Labels を priority_config.py と同期中..."
 	@python3 scripts/sync_labels.py
 	@echo "✅ ラベル同期完了"
+
+# Token Analyzer インストール
+TOOL_DIR = $(HOME)/.claude/tools/token-analyzer
+
+install: ## Token Analyzer を ~/.claude/tools/ にインストール（承認必須）
+	@echo "=== Token Analyzer Install ==="
+	@SRC_VER=$$(cat src/VERSION); \
+	DEST_VER=$$(cat $(TOOL_DIR)/VERSION 2>/dev/null || echo "not installed"); \
+	echo "Current: $$DEST_VER → New: $$SRC_VER"; \
+	echo ""; \
+	echo "Files to install:"; \
+	find src/analyzer src/output src/monitor src/cache src/config src/cli.py src/VERSION -type f 2>/dev/null | sort; \
+	echo ""; \
+	read -p "Install? (y/N): " confirm; \
+	if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
+		mkdir -p $(TOOL_DIR); \
+		rsync -av --delete \
+			src/analyzer/ $(TOOL_DIR)/analyzer/; \
+		rsync -av --delete \
+			src/output/ $(TOOL_DIR)/output/; \
+		rsync -av --delete \
+			src/monitor/ $(TOOL_DIR)/monitor/; \
+		rsync -av --delete \
+			src/cache/ $(TOOL_DIR)/cache/; \
+		rsync -av --delete \
+			src/config/ $(TOOL_DIR)/config/; \
+		cp src/cli.py $(TOOL_DIR)/cli.py; \
+		cp src/VERSION $(TOOL_DIR)/VERSION; \
+		echo "✓ Installed v$$SRC_VER to $(TOOL_DIR)"; \
+	else \
+		echo "Cancelled."; \
+	fi
