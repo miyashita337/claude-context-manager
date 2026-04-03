@@ -1,0 +1,46 @@
+{
+  "sessions": [
+    {
+      "sessionId": "-Users-testuser-project-alpha",
+      "inputTokens": 300, "outputTokens": 580,
+      "cacheCreationTokens": 6000, "cacheReadTokens": 115000,
+      "totalTokens": 121880, "totalCost": 0.15,
+      "lastActivity": "2026-04-01",
+      "modelsUsed": ["claude-opus-4-6", "claude-haiku-4-5-20251001"],
+      "modelBreakdowns": [
+        {"modelName": "claude-opus-4-6", "inputTokens": 250, "outputTokens": 500, "cacheCreationTokens": 5000, "cacheReadTokens": 105000, "cost": 0.14},
+        {"modelName": "claude-haiku-4-5-20251001", "inputTokens": 50, "outputTokens": 80, "cacheCreationTokens": 1000, "cacheReadTokens": 10000, "cost": 0.01}
+      ],
+      "projectPath": "Unknown Project"
+    },
+    {
+      "sessionId": "-Users-testuser-project-alpha--claude-worktrees-feature-1",
+      "inputTokens": 100, "outputTokens": 200,
+      "cacheCreationTokens": 2000, "cacheReadTokens": 30000,
+      "totalTokens": 32300, "totalCost": 0.04,
+      "lastActivity": "2026-04-01",
+      "modelsUsed": ["claude-opus-4-6"],
+      "modelBreakdowns": [
+        {"modelName": "claude-opus-4-6", "inputTokens": 100, "outputTokens": 200, "cacheCreationTokens": 2000, "cacheReadTokens": 30000, "cost": 0.04}
+      ],
+      "projectPath": "Unknown Project"
+    },
+    {
+      "sessionId": "-Users-testuser-project-beta",
+      "inputTokens": 500, "outputTokens": 1000,
+      "cacheCreationTokens": 10000, "cacheReadTokens": 200000,
+      "totalTokens": 211500, "totalCost": 0.25,
+      "lastActivity": "2026-04-02",
+      "modelsUsed": ["claude-sonnet-4-6"],
+      "modelBreakdowns": [
+        {"modelName": "claude-sonnet-4-6", "inputTokens": 500, "outputTokens": 1000, "cacheCreationTokens": 10000, "cacheReadTokens": 200000, "cost": 0.25}
+      ],
+      "projectPath": "Unknown Project"
+    }
+  ],
+  "totals": {
+    "inputTokens": 900, "outputTokens": 1780,
+    "cacheCreationTokens": 18000, "cacheReadTokens": 345000,
+    "totalTokens": 365680, "totalCost": 0.44
+  }
+}
