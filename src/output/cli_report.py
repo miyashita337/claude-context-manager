@@ -32,11 +32,10 @@ class CliReporter:
 
         costs = costs or {}
 
-        header = f"{'#':>3}  {'Project':<35}  {'Sessions':>8}  {'Total Tokens':>14}  {'Cost (USD)':>12}\n"
-        separator = "-" * len(header.rstrip()) + "\n"
+        header = f"{'#':>2} {'Project':<20} {'Ses':>3} {'Tokens':>8} {'Cost':>8}\n"
+        separator = "-" * 45 + "\n"
 
-        self.output.write("\nToken Usage Report (Local CLI)\n")
-        self.output.write("* Cost is approximate (via ccusage)\n\n")
+        self.output.write("Token Usage (Local CLI)\n")
         self.output.write(header)
         self.output.write(separator)
 
@@ -45,19 +44,20 @@ class CliReporter:
 
         for i, (name, summary) in enumerate(data, 1):
             cost = costs.get(name)
-            cost_str = f"~${cost:.2f}" if cost is not None else "N/A"
+            cost_str = f"${cost:.0f}" if cost is not None else "-"
             tokens_str = self.format_tokens(summary.total_tokens)
             total_tokens += summary.total_tokens
             if cost is not None:
                 total_cost += cost
+            # Truncate long project names
+            display_name = name[:20] if len(name) > 20 else name
             self.output.write(
-                f"{i:>3}  {name:<35}  {summary.session_count:>8}  {tokens_str:>14}  {cost_str:>12}\n"
+                f"{i:>2} {display_name:<20} {summary.session_count:>3} {tokens_str:>8} {cost_str:>8}\n"
             )
 
         self.output.write(separator)
         total_tokens_str = self.format_tokens(total_tokens)
-        total_cost_str = f"~${total_cost:.2f}" if costs else "N/A"
+        total_cost_str = f"${total_cost:.0f}" if costs else "-"
         self.output.write(
-            f"{'':>3}  {'Total':<35}  {'':>8}  {total_tokens_str:>14}  {total_cost_str:>12}\n"
+            f"   {'Total':<20} {'':>3} {total_tokens_str:>8} {total_cost_str:>8}\n"
         )
-        self.output.write("\n")

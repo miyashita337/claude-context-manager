@@ -70,7 +70,7 @@ class TestCliReporter:
         reporter = CliReporter(output=output)
         reporter.render(data, costs=costs)
         result = output.getvalue()
-        assert "$12.34" in result
+        assert "$12" in result
 
     def test_render_empty(self) -> None:
         output = StringIO()
