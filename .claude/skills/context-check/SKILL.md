@@ -1,6 +1,7 @@
 ---
 name: context-check
 description: Analyze current session context efficiency in real-time
+global: false
 tools: Bash, Read, Grep
 model: sonnet
 ---
