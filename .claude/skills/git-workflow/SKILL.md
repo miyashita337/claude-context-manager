@@ -1,6 +1,7 @@
 ---
 name: git-workflow
 description: Guide safe git operations with automatic error prevention and recovery
+global: false
 tools: Bash, Read, Grep
 model: sonnet
 ---

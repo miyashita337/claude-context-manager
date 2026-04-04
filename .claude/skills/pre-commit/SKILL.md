@@ -1,6 +1,7 @@
 ---
 name: pre-commit
 description: Run pre-commit checks and resolve errors using PITFALLS.md
+global: false
 tools: Bash, Read, Grep
 model: sonnet
 ---
