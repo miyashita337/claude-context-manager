@@ -1,6 +1,7 @@
 ---
 name: ccusage
 description: Analyze Claude Code session token usage and costs using ccusage CLI. Detects compact events, identifies heavy sessions, and provides optimization recommendations.
+global: true
 tools: Bash, Read, Grep
 model: sonnet
 ---

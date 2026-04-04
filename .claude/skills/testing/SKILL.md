@@ -1,6 +1,7 @@
 ---
 name: testing
 description: TDD + AC駆動の品質管理。実装前にACを定義し、Red→Green→Refactorで品質を担保する
+global: true
 tools: Bash, Read, Grep, Edit
 model: sonnet
 ---

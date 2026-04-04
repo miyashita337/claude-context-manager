@@ -1,6 +1,7 @@
 ---
 name: fact-check
 description: Verify implementation details against official Claude Code documentation
+global: true
 tools: WebSearch, WebFetch, Read, Grep
 model: sonnet
 ---

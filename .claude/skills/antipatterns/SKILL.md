@@ -1,6 +1,7 @@
 ---
 name: antipatterns
 description: Official Claude Code anti-patterns from code.claude.com/docs/en/best-practices. Use for session review anti-pattern matching and /fact-check verification.
+global: true
 ---
 
 # Claude Code 公式アンチパターン
