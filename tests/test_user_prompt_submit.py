@@ -40,6 +40,7 @@ compute_question_density = getattr(ups, "compute_question_density", None)
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+
 def _mock_urlopen(body: dict) -> MagicMock:
     """Return a mock context-manager for urllib.request.urlopen (200 success)."""
     mock_resp = MagicMock()
@@ -64,13 +65,20 @@ def _api_ok(ok: bool, reason: str = "") -> dict:
 
 # ── baseline transcript fixture ───────────────────────────────────────────────
 
+
 @pytest.fixture()
 def transcript(tmp_path) -> str:
     """JSONL transcript with two technical baseline messages."""
     f = tmp_path / "transcript.jsonl"
     lines = [
-        {"type": "user", "message": {"content": "fix the authentication bug in auth.py"}},
-        {"type": "user", "message": {"content": "add unit tests for the login function"}},
+        {
+            "type": "user",
+            "message": {"content": "fix the authentication bug in auth.py"},
+        },
+        {
+            "type": "user",
+            "message": {"content": "add unit tests for the login function"},
+        },
     ]
     f.write_text("\n".join(json.dumps(l) for l in lines))
     return str(f)
@@ -79,6 +87,7 @@ def transcript(tmp_path) -> str:
 # =============================================================================
 # Unit tests: _query_llm_p2()
 # =============================================================================
+
 
 class TestQueryLlmP2:
     """All failure + success paths for the raw API call."""
@@ -106,7 +115,10 @@ class TestQueryLlmP2:
 
     def test_off_topic_returns_warn_with_reason(self):
         """ok:false → decision=warn, reason propagated."""
-        with patch("urllib.request.urlopen", return_value=_mock_urlopen(_api_ok(False, "weather unrelated to work"))):
+        with patch(
+            "urllib.request.urlopen",
+            return_value=_mock_urlopen(_api_ok(False, "weather unrelated to work")),
+        ):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("what's the weather today?", ["fix bug"])
 
@@ -141,7 +153,10 @@ class TestQueryLlmP2:
 
     def test_oserror_returns_warn(self):
         """URLError (connection refused) → warn."""
-        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("connection refused")):
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.URLError("connection refused"),
+        ):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("some prompt", [])
 
@@ -161,7 +176,9 @@ class TestQueryLlmP2:
 
     def test_empty_content_array_returns_warn(self):
         """Empty content list → warn."""
-        with patch("urllib.request.urlopen", return_value=_mock_urlopen({"content": []})):
+        with patch(
+            "urllib.request.urlopen", return_value=_mock_urlopen({"content": []})
+        ):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("some prompt", [])
 
@@ -224,7 +241,11 @@ class TestQueryLlmP2:
 
     def test_haiku_returns_prose_not_json(self):
         """Haiku returns prose ('I cannot determine...') instead of JSON → warn, not crash."""
-        body = {"content": [{"type": "text", "text": "I cannot determine if this is off-topic."}]}
+        body = {
+            "content": [
+                {"type": "text", "text": "I cannot determine if this is off-topic."}
+            ]
+        }
         with patch("urllib.request.urlopen", return_value=_mock_urlopen(body)):
             with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
                 result = ups._query_llm_p2("some prompt", [])
@@ -251,6 +272,7 @@ class TestQueryLlmP2:
 # Integration tests: _run_detection() pipeline trigger conditions
 # =============================================================================
 
+
 class TestRunDetectionPipeline:
     """Verify WHEN P2 fires (and when it must NOT fire)."""
 
@@ -258,7 +280,12 @@ class TestRunDetectionPipeline:
 
     def test_p2_not_called_when_p1_passes(self, transcript):
         """P1 says PASS → P2 skipped."""
-        p1 = {"available": True, "is_deviation": False, "similarity": 0.9, "reason": "ok"}
+        p1 = {
+            "available": True,
+            "is_deviation": False,
+            "similarity": 0.9,
+            "reason": "ok",
+        }
         with patch.object(ups, "_query_topic_server", return_value=p1):
             with patch.object(ups, "_query_llm_p2") as mock_p2:
                 result = ups._run_detection("any prompt", "s1", transcript)
@@ -268,7 +295,12 @@ class TestRunDetectionPipeline:
 
     def test_p2_not_called_when_p0_tech_veto(self, transcript):
         """P1 WARN + P0 sees tech keyword → P2 skipped."""
-        p1 = {"available": True, "is_deviation": True, "similarity": 0.3, "reason": "low"}
+        p1 = {
+            "available": True,
+            "is_deviation": True,
+            "similarity": 0.3,
+            "reason": "low",
+        }
         with patch.object(ups, "_query_topic_server", return_value=p1):
             with patch.object(ups, "_query_llm_p2") as mock_p2:
                 # "python" is a tech keyword → P0 veto
@@ -301,7 +333,12 @@ class TestRunDetectionPipeline:
 
     def test_p2_called_when_p1_warn_no_p0_veto(self, transcript):
         """P1 WARN + no tech keyword + no P0 veto → P2 invoked."""
-        p1 = {"available": True, "is_deviation": True, "similarity": 0.25, "reason": "low"}
+        p1 = {
+            "available": True,
+            "is_deviation": True,
+            "similarity": 0.25,
+            "reason": "low",
+        }
         p2_ret = {"decision": "pass", "reason": "p2_on_topic"}
         with patch.object(ups, "_query_topic_server", return_value=p1):
             with patch.object(ups, "_query_llm_p2", return_value=p2_ret) as mock_p2:
@@ -313,9 +350,18 @@ class TestRunDetectionPipeline:
 
     def test_p2_pass_overrides_p1_warn(self, transcript):
         """P2 says pass → final result is_deviation=False."""
-        p1 = {"available": True, "is_deviation": True, "similarity": 0.3, "reason": "low"}
+        p1 = {
+            "available": True,
+            "is_deviation": True,
+            "similarity": 0.3,
+            "reason": "low",
+        }
         with patch.object(ups, "_query_topic_server", return_value=p1):
-            with patch.object(ups, "_query_llm_p2", return_value={"decision": "pass", "reason": "p2_on_topic"}):
+            with patch.object(
+                ups,
+                "_query_llm_p2",
+                return_value={"decision": "pass", "reason": "p2_on_topic"},
+            ):
                 result = ups._run_detection("今日の天気は？", "s1", transcript)
 
         assert not result["is_deviation"]
@@ -323,19 +369,60 @@ class TestRunDetectionPipeline:
 
     def test_p2_warn_keeps_deviation_true(self, transcript):
         """P2 says warn → is_deviation stays True, reason updated."""
-        p1 = {"available": True, "is_deviation": True, "similarity": 0.2, "reason": "low"}
+        p1 = {
+            "available": True,
+            "is_deviation": True,
+            "similarity": 0.2,
+            "reason": "low",
+        }
         with patch.object(ups, "_query_topic_server", return_value=p1):
-            with patch.object(ups, "_query_llm_p2", return_value={"decision": "warn", "reason": "p2_llm: 天気は無関係"}):
+            with patch.object(
+                ups,
+                "_query_llm_p2",
+                return_value={"decision": "warn", "reason": "p2_llm: 天気は無関係"},
+            ):
                 result = ups._run_detection("今日の天気は？", "s1", transcript)
 
         assert result["is_deviation"]
         assert "p2_llm" in result["reason"]
 
-    def test_p2_error_preserves_p1_warn(self, transcript):
-        """P2 internal error (conservative) → still warns."""
-        p1 = {"available": True, "is_deviation": True, "similarity": 0.2, "reason": "low"}
+    def test_p2_judgment_failed_passes(self, transcript):
+        """P2 judgment_failed → treat as pass (don't interrupt user with dialog)."""
+        p1 = {
+            "available": True,
+            "is_deviation": True,
+            "similarity": 0.2,
+            "reason": "low",
+        }
         with patch.object(ups, "_query_topic_server", return_value=p1):
-            with patch.object(ups, "_query_llm_p2", return_value={"decision": "warn", "reason": "p2_error: timeout"}):
+            with patch.object(
+                ups,
+                "_query_llm_p2",
+                return_value={
+                    "decision": "warn",
+                    "reason": "p2_error: timeout",
+                    "judgment_failed": True,
+                },
+            ):
+                result = ups._run_detection("今日の天気は？", "s1", transcript)
+
+        assert not result["is_deviation"]
+        assert "p2_judgment_failed_pass" in result["reason"]
+
+    def test_p2_confirmed_warn_keeps_deviation(self, transcript):
+        """P2 confirmed off-topic (no judgment_failed) → is_deviation stays True."""
+        p1 = {
+            "available": True,
+            "is_deviation": True,
+            "similarity": 0.2,
+            "reason": "low",
+        }
+        with patch.object(ups, "_query_topic_server", return_value=p1):
+            with patch.object(
+                ups,
+                "_query_llm_p2",
+                return_value={"decision": "warn", "reason": "p2_llm: 天気は無関係"},
+            ):
                 result = ups._run_detection("今日の天気は？", "s1", transcript)
 
         assert result["is_deviation"]
@@ -345,6 +432,7 @@ class TestRunDetectionPipeline:
 # Unit tests: _query_topic_server()
 # =============================================================================
 
+
 class TestQueryTopicServer:
     """Verify P1 embedding server error handling."""
 
@@ -353,7 +441,9 @@ class TestQueryTopicServer:
         import http.client
 
         mock_resp = MagicMock()
-        mock_resp.read.return_value = b""  # empty body → json.loads("") raises JSONDecodeError
+        mock_resp.read.return_value = (
+            b""  # empty body → json.loads("") raises JSONDecodeError
+        )
 
         with patch.object(http.client, "HTTPConnection") as mock_conn_cls:
             mock_conn_cls.return_value.getresponse.return_value = mock_resp
@@ -379,6 +469,7 @@ class TestQueryTopicServer:
 # Unit tests: detect_question_scatter() — #96
 # =============================================================================
 
+
 class TestDetectQuestionScatter:
     """#96: Question scatter pattern detection."""
 
@@ -395,7 +486,9 @@ class TestDetectQuestionScatter:
         assert result["is_scatter"] is True
 
     def test_four_markers_no_question_marks(self):
-        result = detect_question_scatter("なぜこうなるのか、どうしてこうなのか、比較してほしい、それぞれ教えて")
+        result = detect_question_scatter(
+            "なぜこうなるのか、どうしてこうなのか、比較してほしい、それぞれ教えて"
+        )
         assert result["is_scatter"] is True
 
     def test_ten_question_marks(self):
@@ -421,11 +514,15 @@ class TestDetectQuestionScatter:
         assert result["question_count"] == 0
 
     def test_three_markers_below_threshold(self):
-        result = detect_question_scatter("なぜこうなのか、どうして動かないのか、比較して")
+        result = detect_question_scatter(
+            "なぜこうなのか、どうして動かないのか、比較して"
+        )
         assert result["is_scatter"] is False
 
     def test_url_with_single_question_mark(self):
-        result = detect_question_scatter("https://example.com/search?q=test を見てください")
+        result = detect_question_scatter(
+            "https://example.com/search?q=test を見てください"
+        )
         assert result["is_scatter"] is False
 
     def test_question_count_accuracy(self):
@@ -437,6 +534,7 @@ class TestDetectQuestionScatter:
 # Unit tests: compute_question_density() — #97
 # =============================================================================
 
+
 class TestComputeQuestionDensity:
     """#97: Session cumulative question density tracking."""
 
@@ -445,10 +543,11 @@ class TestComputeQuestionDensity:
         path = tmp_path / "transcript.jsonl"
         lines = []
         for msg in messages:
-            lines.append(json.dumps({
-                "type": "user",
-                "message": {"role": "user", "content": msg}
-            }))
+            lines.append(
+                json.dumps(
+                    {"type": "user", "message": {"role": "user", "content": msg}}
+                )
+            )
         path.write_text("\n".join(lines), encoding="utf-8")
         return str(path)
 
@@ -506,12 +605,15 @@ class TestComputeQuestionDensity:
 # Integration tests: scatter detection in main() — #96/#97
 # =============================================================================
 
+
 class TestScatterIntegration:
     """Integration: scatter detection in main() additionalContext."""
 
     @patch.object(ups, "SessionLogger")
     @patch.object(ups, "_run_detection")
-    def test_scatter_detected_additional_context(self, mock_detection, mock_logger, tmp_path, capsys):
+    def test_scatter_detected_additional_context(
+        self, mock_detection, mock_logger, tmp_path, capsys
+    ):
         """When scatter detected, additionalContext should contain guidance."""
         mock_detection.return_value = {"is_deviation": False, "reason": ""}
         mock_logger_instance = MagicMock()
@@ -521,17 +623,25 @@ class TestScatterIntegration:
         # Create a transcript with high density
         transcript = tmp_path / "t.jsonl"
         transcript.write_text(
-            "\n".join(json.dumps({"type": "user", "message": {"role": "user", "content": "？？？？"}}) for _ in range(5)),
-            encoding="utf-8"
+            "\n".join(
+                json.dumps(
+                    {"type": "user", "message": {"role": "user", "content": "？？？？"}}
+                )
+                for _ in range(5)
+            ),
+            encoding="utf-8",
         )
 
-        input_data = json.dumps({
-            "session_id": "test-session",
-            "prompt": "これは何？どうする？なぜ？",
-            "transcript_path": str(transcript)
-        })
+        input_data = json.dumps(
+            {
+                "session_id": "test-session",
+                "prompt": "これは何？どうする？なぜ？",
+                "transcript_path": str(transcript),
+            }
+        )
 
         from io import StringIO
+
         with patch("sys.stdin", StringIO(input_data)):
             with pytest.raises(SystemExit):
                 ups.main()
@@ -544,7 +654,9 @@ class TestScatterIntegration:
 
     @patch.object(ups, "SessionLogger")
     @patch.object(ups, "_run_detection")
-    def test_no_scatter_no_issue_guidance(self, mock_detection, mock_logger, tmp_path, capsys):
+    def test_no_scatter_no_issue_guidance(
+        self, mock_detection, mock_logger, tmp_path, capsys
+    ):
         """When no scatter, additionalContext should not contain issue guidance."""
         mock_detection.return_value = {"is_deviation": False, "reason": ""}
         mock_logger_instance = MagicMock()
@@ -553,17 +665,22 @@ class TestScatterIntegration:
 
         transcript = tmp_path / "t.jsonl"
         transcript.write_text(
-            json.dumps({"type": "user", "message": {"role": "user", "content": "修正して"}}),
-            encoding="utf-8"
+            json.dumps(
+                {"type": "user", "message": {"role": "user", "content": "修正して"}}
+            ),
+            encoding="utf-8",
         )
 
-        input_data = json.dumps({
-            "session_id": "test-session",
-            "prompt": "バグを修正してください",
-            "transcript_path": str(transcript)
-        })
+        input_data = json.dumps(
+            {
+                "session_id": "test-session",
+                "prompt": "バグを修正してください",
+                "transcript_path": str(transcript),
+            }
+        )
 
         from io import StringIO
+
         with patch("sys.stdin", StringIO(input_data)):
             with pytest.raises(SystemExit):
                 ups.main()

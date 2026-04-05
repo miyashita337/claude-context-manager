@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 # Add shared directory to Python path
-sys.path.insert(0, str(Path(__file__).parent / 'shared'))
+sys.path.insert(0, str(Path(__file__).parent / "shared"))
 
 from logger import SessionLogger
 
@@ -21,41 +21,123 @@ from logger import SessionLogger
 # Must NOT appear together with tech keywords to trigger warning
 _OFF_TOPIC = [
     # 天気・気象
-    '天気', '気温', '台風', '気候', '天候', '晴れ', '曇り', '降水',
+    "天気",
+    "気温",
+    "台風",
+    "気候",
+    "天候",
+    "晴れ",
+    "曇り",
+    "降水",
     # ニュース・時事・政治
-    'ニュース', '時事', '政治', '選挙', '事件', '事故', '芸能',
+    "ニュース",
+    "時事",
+    "政治",
+    "選挙",
+    "事件",
+    "事故",
+    "芸能",
     # 金融・株式
-    '株価', '為替', '仮想通貨', 'bitcoin', 'btc', '投資信託',
+    "株価",
+    "為替",
+    "仮想通貨",
+    "bitcoin",
+    "btc",
+    "投資信託",
     # 料理・食事
-    'レシピ', '食べ物', 'ランチ', 'ディナー', '献立', '食材',
+    "レシピ",
+    "食べ物",
+    "ランチ",
+    "ディナー",
+    "献立",
+    "食材",
     # エンタメ・雑談
-    'アニメ', 'マンガ', 'スポーツ', '野球', 'サッカー', '競馬',
+    "アニメ",
+    "マンガ",
+    "スポーツ",
+    "野球",
+    "サッカー",
+    "競馬",
 ]
 
 # Tech/work-related keywords that override off-topic detection
 _TECH = [
     # コーディング全般
-    'コード', '実装', 'バグ', 'エラー', 'デバッグ', 'テスト', 'リファクタ',
-    'ファイル', '関数', 'クラス', 'メソッド', 'モジュール', 'ライブラリ',
+    "コード",
+    "実装",
+    "バグ",
+    "エラー",
+    "デバッグ",
+    "テスト",
+    "リファクタ",
+    "ファイル",
+    "関数",
+    "クラス",
+    "メソッド",
+    "モジュール",
+    "ライブラリ",
     # Git / CI
-    'git', 'commit', 'push', 'pull', 'branch', 'merge', 'pr', 'issue',
+    "git",
+    "commit",
+    "push",
+    "pull",
+    "branch",
+    "merge",
+    "pr",
+    "issue",
     # 言語・フレームワーク
-    'python', 'typescript', 'javascript', 'bash', 'shell', 'sql',
-    'api', 'json', 'yaml', 'toml', 'hook', 'cli', 'sdk',
+    "python",
+    "typescript",
+    "javascript",
+    "bash",
+    "shell",
+    "sql",
+    "api",
+    "json",
+    "yaml",
+    "toml",
+    "hook",
+    "cli",
+    "sdk",
     # 作業動詞
-    'インストール', '設定', 'ビルド', 'デプロイ', '修正', '追加', '削除',
-    'import', 'def ', 'class ', 'return', 'fix', 'feat', 'refactor',
+    "インストール",
+    "設定",
+    "ビルド",
+    "デプロイ",
+    "修正",
+    "追加",
+    "削除",
+    "import",
+    "def ",
+    "class ",
+    "return",
+    "fix",
+    "feat",
+    "refactor",
     # このプロジェクト固有
-    'セッション', 'analytics', 'hook', 'claude', 'llm', 'token',
+    "セッション",
+    "analytics",
+    "hook",
+    "claude",
+    "llm",
+    "token",
 ]
 
 # Question scatter detection markers (Issue #96)
 _QUESTION_MARKERS = [
-    '？', '?',
-    'なぜ', 'どうして', 'なんで',
-    'どう違う', '違いは', '比較',
-    'それぞれ', '各々',
-    'あと、', 'ついでに', 'もう一つ',
+    "？",
+    "?",
+    "なぜ",
+    "どうして",
+    "なんで",
+    "どう違う",
+    "違いは",
+    "比較",
+    "それぞれ",
+    "各々",
+    "あと、",
+    "ついでに",
+    "もう一つ",
 ]
 
 
@@ -66,7 +148,7 @@ def read_user_messages(transcript_path: str) -> list[str]:
         return []
     messages = []
     try:
-        with open(path, errors='replace') as f:
+        with open(path, errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -75,8 +157,8 @@ def read_user_messages(transcript_path: str) -> list[str]:
                     event = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if event.get('type') == 'user':
-                    content = event.get('message', {}).get('content', '')
+                if event.get("type") == "user":
+                    content = event.get("message", {}).get("content", "")
                     if isinstance(content, str) and content.strip():
                         messages.append(content[:300])
     except Exception:
@@ -94,18 +176,24 @@ def _query_topic_server(prompt: str, session_id: str, transcript_path: str) -> d
     import http.client
 
     all_messages = read_user_messages(transcript_path)
-    baseline_messages = all_messages[:3]   # first 3 = session intent
+    baseline_messages = all_messages[:3]  # first 3 = session intent
 
-    payload = json.dumps({
-        "prompt": prompt,
-        "session_id": session_id,
-        "baseline_messages": baseline_messages,
-    }).encode()
+    payload = json.dumps(
+        {
+            "prompt": prompt,
+            "session_id": session_id,
+            "baseline_messages": baseline_messages,
+        }
+    ).encode()
 
     try:
         conn = http.client.HTTPConnection("127.0.0.1", 8765, timeout=2)
-        conn.request("POST", "/similarity", body=payload,
-                     headers={"Content-Type": "application/json"})
+        conn.request(
+            "POST",
+            "/similarity",
+            body=payload,
+            headers={"Content-Type": "application/json"},
+        )
         resp = conn.getresponse()
         data = json.loads(resp.read())
         conn.close()
@@ -120,7 +208,7 @@ def detect_topic_deviation(current_prompt: str, recent_messages: list[str]) -> d
     Returns:
         {"is_deviation": bool, "reason": str}
     """
-    text = (current_prompt + ' ' + ' '.join(recent_messages)).lower()
+    text = (current_prompt + " " + " ".join(recent_messages)).lower()
     prompt_lower = current_prompt.lower()
 
     # Tech keyword present → always PASS (prevents false positives like "天気予報APIの実装")
@@ -141,7 +229,7 @@ def detect_topic_deviation(current_prompt: str, recent_messages: list[str]) -> d
 
 def detect_question_scatter(prompt: str) -> dict:
     """Detect question scatter pattern (multiple independent questions in one prompt)."""
-    question_marks = prompt.count('？') + prompt.count('?')
+    question_marks = prompt.count("？") + prompt.count("?")
     marker_count = sum(1 for m in _QUESTION_MARKERS if m in prompt)
     if question_marks >= 3 or marker_count >= 4:
         return {"is_scatter": True, "question_count": max(question_marks, marker_count)}
@@ -157,7 +245,7 @@ def compute_question_density(transcript_path: str, window: int = 5) -> float:
     recent = messages[-window:]
     if not recent:
         return 0.0
-    total_questions = sum(m.count('？') + m.count('?') for m in recent)
+    total_questions = sum(m.count("？") + m.count("?") for m in recent)
     return total_questions / len(recent)
 
 
@@ -177,7 +265,7 @@ def sanitize_stdin(stdin_content: str, hook_name: str) -> str:
     # Find first JSON character
     start_idx = -1
     for i, char in enumerate(stdin_content):
-        if char in ('{', '['):
+        if char in ("{", "["):
             start_idx = i
             break
 
@@ -187,9 +275,9 @@ def sanitize_stdin(stdin_content: str, hook_name: str) -> str:
 
     # Non-JSON text found before JSON - sanitize and log
     if start_idx > 0:
-        debug_log = Path.home() / '.claude' / 'hook-debug.log'
+        debug_log = Path.home() / ".claude" / "hook-debug.log"
         try:
-            with open(debug_log, 'a', encoding='utf-8') as f:
+            with open(debug_log, "a", encoding="utf-8") as f:
                 f.write(f"\n=== Stdin Sanitization ({hook_name}) ===\n")
                 f.write(f"Removed {start_idx} bytes of non-JSON prefix\n")
                 f.write(f"Prefix content: {repr(stdin_content[:start_idx])}\n")
@@ -203,9 +291,9 @@ def sanitize_stdin(stdin_content: str, hook_name: str) -> str:
 
 def _p2_debug_log(msg: str) -> None:
     """Write a debug message to hook-debug.log (best-effort)."""
-    debug_log = Path.home() / '.claude' / 'hook-debug.log'
+    debug_log = Path.home() / ".claude" / "hook-debug.log"
     try:
-        with open(debug_log, 'a', encoding='utf-8') as f:
+        with open(debug_log, "a", encoding="utf-8") as f:
             f.write(f"\n=== P2 Debug ===\n{msg}\n")
     except Exception:
         pass
@@ -226,7 +314,11 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        return {"decision": "warn", "reason": "p2_unavailable (no API key)", "judgment_failed": True}
+        return {
+            "decision": "warn",
+            "reason": "p2_unavailable (no API key)",
+            "judgment_failed": True,
+        }
 
     _SYSTEM_PROMPT = (
         "You are evaluating whether a user's new prompt is off-topic for their current work session.\n\n"
@@ -252,18 +344,20 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
         "Is this new prompt on-topic for the session?"
     )
 
-    payload = json.dumps({
-        "model": "claude-haiku-4-5-20251001",
-        "max_tokens": 60,
-        "system": [
-            {
-                "type": "text",
-                "text": _SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        "messages": [{"role": "user", "content": user_content}],
-    }).encode()
+    payload = json.dumps(
+        {
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 60,
+            "system": [
+                {
+                    "type": "text",
+                    "text": _SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            "messages": [{"role": "user", "content": user_content}],
+        }
+    ).encode()
 
     req = urllib.request.Request(
         "https://api.anthropic.com/v1/messages",
@@ -278,49 +372,83 @@ def _query_llm_p2(prompt: str, baseline_messages: list[str]) -> dict:
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=5) as resp:  # nosemgrep: dynamic-urllib-use-detected
+        with urllib.request.urlopen(
+            req, timeout=5
+        ) as resp:  # nosemgrep: dynamic-urllib-use-detected
             resp_body = resp.read()
     except urllib.error.HTTPError as e:
-        return {"decision": "warn", "reason": f"p2_api_error ({e.code})", "judgment_failed": True}
+        return {
+            "decision": "warn",
+            "reason": f"p2_api_error ({e.code})",
+            "judgment_failed": True,
+        }
     except Exception as e:
         _p2_debug_log(f"urlopen raised {type(e).__name__}: {e}")
-        return {"decision": "warn", "reason": f"p2_error: {str(e)[:50]}", "judgment_failed": True}
+        return {
+            "decision": "warn",
+            "reason": f"p2_error: {str(e)[:50]}",
+            "judgment_failed": True,
+        }
 
     if not resp_body or not resp_body.strip():
         return {"decision": "warn", "reason": "p2_empty_body", "judgment_failed": True}
 
     # Guard: non-JSON body (e.g. HTML from WAF/CDN returning 200 with error page)
-    if not resp_body.strip().startswith((b'{', b'[')):
-        return {"decision": "warn", "reason": "p2_non_json_body", "judgment_failed": True}
+    if not resp_body.strip().startswith((b"{", b"[")):
+        return {
+            "decision": "warn",
+            "reason": "p2_non_json_body",
+            "judgment_failed": True,
+        }
 
     try:
         data = json.loads(resp_body)
         content_list = data.get("content", [])
         if not content_list:
-            return {"decision": "warn", "reason": "p2_empty_response", "judgment_failed": True}
+            return {
+                "decision": "warn",
+                "reason": "p2_empty_response",
+                "judgment_failed": True,
+            }
 
         text = content_list[0].get("text", "")
         if not text.strip():
-            return {"decision": "warn", "reason": "p2_empty_text", "judgment_failed": True}
+            return {
+                "decision": "warn",
+                "reason": "p2_empty_text",
+                "judgment_failed": True,
+            }
 
         # Guard: Haiku returned prose instead of JSON (e.g. "I cannot determine...")
-        if not text.strip().startswith(('{', '[')):
-            return {"decision": "warn", "reason": "p2_non_json_text", "judgment_failed": True}
+        if not text.strip().startswith(("{", "[")):
+            return {
+                "decision": "warn",
+                "reason": "p2_non_json_text",
+                "judgment_failed": True,
+            }
 
         result = json.loads(text.strip())
 
         if result.get("ok", True):  # missing 'ok' → default on-topic (conservative)
             return {"decision": "pass", "reason": "p2_on_topic"}
-        return {"decision": "warn", "reason": f"p2_llm: {result.get('reason', 'off-topic')}"}
+        return {
+            "decision": "warn",
+            "reason": f"p2_llm: {result.get('reason', 'off-topic')}",
+        }
 
     except Exception as e:
         import traceback
+
         _p2_debug_log(
             f"inner parse error {type(e).__name__}: {e}\n"
             f"resp_body[:200]={repr(resp_body[:200])}\n"
             f"traceback:\n{traceback.format_exc()}"
         )
-        return {"decision": "warn", "reason": f"p2_error: {str(e)[:50]}", "judgment_failed": True}
+        return {
+            "decision": "warn",
+            "reason": f"p2_error: {str(e)[:50]}",
+            "judgment_failed": True,
+        }
 
 
 def _run_detection(current_prompt: str, session_id: str, transcript_path: str) -> dict:
@@ -355,11 +483,17 @@ def _run_detection(current_prompt: str, session_id: str, transcript_path: str) -
                         "reason": f"p2_pass ({p2['reason']})",
                     }
                 else:
-                    detection = {
-                        "is_deviation": True,
-                        "reason": p2["reason"],
-                        "judgment_failed": p2.get("judgment_failed", False),
-                    }
+                    # judgment_failed → 判定不能は逸脱扱いしない（ダイアログ抑止）
+                    if p2.get("judgment_failed", False):
+                        detection = {
+                            "is_deviation": False,
+                            "reason": f"p2_judgment_failed_pass ({p2['reason']})",
+                        }
+                    else:
+                        detection = {
+                            "is_deviation": True,
+                            "reason": p2["reason"],
+                        }
     else:
         # P0 fallback: サーバー停止 or baseline未形成（セッション先頭）
         recent = read_user_messages(transcript_path)[-5:]
@@ -376,12 +510,16 @@ def main():
 
         # Handle empty stdin gracefully
         if not stdin_content or not stdin_content.strip():
-            print(json.dumps({
-                "hookSpecificOutput": {
-                    "hookEventName": "UserPromptSubmit",
-                    "status": "skipped"
-                }
-            }))
+            print(
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "UserPromptSubmit",
+                            "status": "skipped",
+                        }
+                    }
+                )
+            )
             sys.exit(0)
 
         # Sanitize stdin (remove non-JSON prefix from shell profile pollution)
@@ -391,58 +529,44 @@ def main():
         input_data = json.loads(stdin_content)
 
         # Extract session ID, user prompt, and transcript path
-        session_id = input_data.get('session_id', 'unknown')
-        user_prompt = input_data.get('prompt', '')
-        transcript_path = input_data.get('transcript_path', '')
+        session_id = input_data.get("session_id", "unknown")
+        user_prompt = input_data.get("prompt", "")
+        transcript_path = input_data.get("transcript_path", "")
 
         # Log the user prompt
         logger = SessionLogger(session_id)
-        logger.add_entry('user', user_prompt)
+        logger.add_entry("user", user_prompt)
 
         # Get session stats
         stats = logger.get_session_stats()
 
         # --- Topic deviation detection: P1 → P0 veto → P2 ---
-        additional_parts = [f"Logged user prompt. Session stats: {stats['total_tokens']} tokens"]
+        additional_parts = [
+            f"Logged user prompt. Session stats: {stats['total_tokens']} tokens"
+        ]
 
         try:
             detection = _run_detection(user_prompt, session_id, transcript_path)
 
             if detection.get("is_deviation"):
                 reason = detection.get("reason", "")
-                judgment_failed = detection.get("judgment_failed", False)
 
                 # プロンプトの冒頭をモーダルに表示（どの発言が引っかかったか識別用）
-                prompt_preview = user_prompt[:40].replace('\n', ' ')
+                prompt_preview = user_prompt[:40].replace("\n", " ")
                 if len(user_prompt) > 40:
                     prompt_preview += "..."
                 prompt_line = f"▶ 「{prompt_preview}」"
 
-                # デフォルト値を先に設定（NameError防止 + 明示的な初期化）
                 alert_title = "🔴 話題逸脱の可能性"
                 alert_message = (
                     "現在のセッションのトピックと関連が薄いかもしれません。\n"
                     "別トピックの場合は新しいセッションの開始を検討してください。\n"
                     f"{prompt_line}"
                 )
-
-                if judgment_failed:
-                    additional_parts.append(
-                        f"🔴🔴🔴 [判定不能] LLMが話題逸脱の判定に失敗しました"
-                        f" ({reason})。念のため確認してください。"
-                    )
-                    alert_title = "⚠️ 話題逸脱：判定不能"
-                    alert_message = (
-                        "LLMが判定できませんでした。\n"
-                        "話題が逸脱している可能性があります。\n"
-                        "念のため確認してください。\n"
-                        f"{prompt_line}"
-                    )
-                else:
-                    additional_parts.append(
-                        f"🔴🔴🔴 [話題逸脱の可能性] 現在のセッションのトピックと関連が薄いかもしれません"
-                        f" ({reason})。別トピックの場合は新しいセッションの開始を検討してください。"
-                    )
+                additional_parts.append(
+                    f"🔴🔴🔴 [話題逸脱の可能性] 現在のセッションのトピックと関連が薄いかもしれません"
+                    f" ({reason})。別トピックの場合は新しいセッションの開始を検討してください。"
+                )
 
                 # AppleScriptモーダルで強制通知（バックグラウンド起動、クリックまで残る）
                 try:
@@ -454,20 +578,20 @@ def main():
                         \n を AppleScript の & return & に変換する。
                         """
                         parts = [
-                            '"' + p.replace('\\', '\\\\').replace('"', '\\"') + '"'
-                            for p in s.split('\n')
+                            '"' + p.replace("\\", "\\\\").replace('"', '\\"') + '"'
+                            for p in s.split("\n")
                         ]
-                        return ' & return & '.join(parts)
+                        return " & return & ".join(parts)
 
                     script = (
-                        f'display alert {_as_str(alert_title)} '
-                        f'message {_as_str(alert_message)} '
+                        f"display alert {_as_str(alert_title)} "
+                        f"message {_as_str(alert_message)} "
                         f'buttons {{"確認"}} '
                         f'default button "確認" '
-                        f'as critical'
+                        f"as critical"
                     )
                     subprocess.Popen(
-                        ['osascript', '-e', script],
+                        ["osascript", "-e", script],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         start_new_session=True,
@@ -480,7 +604,9 @@ def main():
         # --- Question scatter detection (independent of topic deviation) ---
         try:
             scatter = detect_question_scatter(user_prompt)
-            density = compute_question_density(transcript_path) if transcript_path else 0.0
+            density = (
+                compute_question_density(transcript_path) if transcript_path else 0.0
+            )
 
             if scatter["is_scatter"] or density > 3.0:
                 parts = []
@@ -505,37 +631,46 @@ def main():
             pass  # 検知失敗はユーザーをブロックしない
 
         # Return success with hookEventName
-        print(json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "UserPromptSubmit",
-                "status": "logged",
-                "additionalContext": " | ".join(additional_parts)
-            }
-        }))
+        print(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "UserPromptSubmit",
+                        "status": "logged",
+                        "additionalContext": " | ".join(additional_parts),
+                    }
+                }
+            )
+        )
         sys.exit(0)
 
     except Exception as e:
         # Log error but don't fail the hook
         # Write to debug log
-        debug_log = Path.home() / '.claude' / 'hook-debug.log'
+        debug_log = Path.home() / ".claude" / "hook-debug.log"
         try:
-            with open(debug_log, 'a', encoding='utf-8') as f:
+            with open(debug_log, "a", encoding="utf-8") as f:
                 f.write(f"\n=== UserPromptSubmit Error ===\n")
                 f.write(f"ERROR: {str(e)}\n")
                 import traceback
+
                 f.write(f"Traceback: {traceback.format_exc()}\n")
         except:
             pass
 
         # Return error status with hookEventName
-        print(json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "UserPromptSubmit",
-                "status": "error"
-            }
-        }))
+        print(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "UserPromptSubmit",
+                        "status": "error",
+                    }
+                }
+            )
+        )
         sys.exit(0)  # Don't block user interaction
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
