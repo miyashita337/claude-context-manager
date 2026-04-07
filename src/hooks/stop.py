@@ -7,7 +7,21 @@ import subprocess
 from pathlib import Path
 
 # Add shared directory to Python path
-sys.path.insert(0, str(Path(__file__).parent / 'shared'))
+sys.path.insert(0, str(Path(__file__).parent / "shared"))
+
+from logger import SessionLogger  # noqa: E402
+
+# Guardrail scanner (Issue #130) - fail-open
+try:
+    sys.path.insert(0, str(Path(__file__).parent))
+    import guardrail_log
+    import rule_scanner
+
+    _GUARDRAIL_RULES = rule_scanner.load_rules()
+except Exception:  # pragma: no cover
+    guardrail_log = None
+    rule_scanner = None
+    _GUARDRAIL_RULES = []
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _ENGINE_PATH = _PROJECT_ROOT / ".claude" / "analytics" / "engine.py"
@@ -30,7 +44,7 @@ def sanitize_stdin(stdin_content: str, hook_name: str) -> str:
     # Find first JSON character
     start_idx = -1
     for i, char in enumerate(stdin_content):
-        if char in ('{', '['):
+        if char in ("{", "["):
             start_idx = i
             break
 
@@ -40,9 +54,9 @@ def sanitize_stdin(stdin_content: str, hook_name: str) -> str:
 
     # Non-JSON text found before JSON - sanitize and log
     if start_idx > 0:
-        debug_log = Path.home() / '.claude' / 'hook-debug.log'
+        debug_log = Path.home() / ".claude" / "hook-debug.log"
         try:
-            with open(debug_log, 'a', encoding='utf-8') as f:
+            with open(debug_log, "a", encoding="utf-8") as f:
                 f.write(f"\n=== Stdin Sanitization ({hook_name}) ===\n")
                 f.write(f"Removed {start_idx} bytes of non-JSON prefix\n")
                 f.write(f"Prefix content: {repr(stdin_content[:start_idx])}\n")
@@ -72,25 +86,25 @@ def main():
         input_data = json.loads(stdin_content)
 
         # Extract session ID
-        session_id = input_data.get('session_id', 'unknown')
+        session_id = input_data.get("session_id", "unknown")
 
         # Path to TypeScript finalization script
         project_root = Path(__file__).parent.parent.parent
-        ts_script = project_root / 'src' / 'cli' / 'finalize-session.ts'
+        ts_script = project_root / "src" / "cli" / "finalize-session.ts"
 
         # Call TypeScript script to finalize session
         result = subprocess.run(
-            ['npx', 'tsx', str(ts_script), session_id],
+            ["npx", "tsx", str(ts_script), session_id],
             cwd=str(project_root),
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=30,
         )
 
         # Log finalization result to debug log
-        debug_log = Path.home() / '.claude' / 'hook-debug.log'
+        debug_log = Path.home() / ".claude" / "hook-debug.log"
         try:
-            with open(debug_log, 'a', encoding='utf-8') as f:
+            with open(debug_log, "a", encoding="utf-8") as f:
                 f.write(f"\n=== Stop Hook Finalization ===\n")
                 f.write(f"Session ID: {session_id}\n")
                 f.write(f"Return code: {result.returncode}\n")
@@ -100,15 +114,42 @@ def main():
         except:
             pass
 
+        # Guardrail R-003 scan (Issue #130) - warn-only, fail-open
+        if rule_scanner is not None and guardrail_log is not None and _GUARDRAIL_RULES:
+            try:
+                logs = SessionLogger(session_id)._load_logs() or []
+                lines: list[str] = []
+                for entry in logs[-200:]:
+                    content = entry.get("content", "")
+                    if isinstance(content, str):
+                        lines.extend(content.splitlines())
+                matches = rule_scanner.scan_stop(lines, _GUARDRAIL_RULES)
+                project_name = Path.cwd().name
+                for rule, ctx in matches:
+                    guardrail_log.write_violation(
+                        rule.id,
+                        rule.severity,
+                        ctx,
+                        session_id=session_id,
+                        project=project_name,
+                    )
+            except Exception:
+                pass
+
         # Tier 1: Fire-and-forget bottleneck pre-cache (non-blocking)
-        if session_id and session_id != 'unknown' and _ENGINE_PATH.exists():
+        if session_id and session_id != "unknown" and _ENGINE_PATH.exists():
             try:
                 _CACHE_DIR.mkdir(parents=True, exist_ok=True)
                 output_path = _CACHE_DIR / f"{session_id}.json"
                 subprocess.Popen(
-                    [sys.executable, str(_ENGINE_PATH),
-                     "--session-id", session_id,
-                     "--output", str(output_path)],
+                    [
+                        sys.executable,
+                        str(_ENGINE_PATH),
+                        "--session-id",
+                        session_id,
+                        "--output",
+                        str(output_path),
+                    ],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
@@ -122,12 +163,13 @@ def main():
 
     except Exception as e:
         # Log error but don't fail the hook
-        debug_log = Path.home() / '.claude' / 'hook-debug.log'
+        debug_log = Path.home() / ".claude" / "hook-debug.log"
         try:
-            with open(debug_log, 'a', encoding='utf-8') as f:
+            with open(debug_log, "a", encoding="utf-8") as f:
                 f.write(f"\n=== Stop Hook Error ===\n")
                 f.write(f"ERROR: {str(e)}\n")
                 import traceback
+
                 f.write(f"Traceback: {traceback.format_exc()}\n")
         except:
             pass
@@ -137,5 +179,5 @@ def main():
         sys.exit(0)  # Don't block shutdown
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

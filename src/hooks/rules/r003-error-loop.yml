@@ -1,0 +1,7 @@
+id: R-003
+name: error-loop
+severity: warn
+trigger:
+  event: stop
+action: log
+message: "Same error repeated {count} times: {error_excerpt}"

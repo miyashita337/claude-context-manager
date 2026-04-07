@@ -1,0 +1,11 @@
+id: R-004
+name: git-push-without-pre-check
+severity: warn
+trigger:
+  event: post_tool_use
+  tool: [Bash]
+match:
+  command_regex: '\bgit\s+push\b'
+  absent_in_history: 'pre-git-check'
+action: log
+message: "git push without recent 'make pre-git-check': {command}"

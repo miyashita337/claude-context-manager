@@ -1,0 +1,11 @@
+id: R-006
+name: todo-in-staged-commit
+severity: warn
+trigger:
+  event: post_tool_use
+  tool: [Bash]
+match:
+  command_regex: '\bgit\s+commit\b'
+  staged_diff_regex: '(TODO|FIXME|XXX)'
+action: log
+message: "git commit with TODO/FIXME/XXX in staged changes"
