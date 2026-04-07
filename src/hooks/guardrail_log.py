@@ -8,6 +8,7 @@ Fail-open: all errors are swallowed so hooks never break.
 
 from __future__ import annotations
 
+import fcntl
 import json
 from datetime import datetime
 from pathlib import Path
@@ -56,8 +57,22 @@ def write_violation(
             "ctx": ctx,
             "action": action,
         }
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        # Shared exclusive lock with archive_violations.py to prevent
+        # the archiver's read/rewrite cycle from losing concurrent appends.
+        lock_path = path.with_suffix(path.suffix + ".lock")
+        with open(lock_path, "w") as lock_fh:
+            try:
+                fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX)
+            except OSError:
+                pass
+            try:
+                with open(path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            finally:
+                try:
+                    fcntl.flock(lock_fh.fileno(), fcntl.LOCK_UN)
+                except OSError:
+                    pass
         return True
     except (OSError, TypeError, ValueError):
         return False
