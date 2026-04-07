@@ -45,7 +45,7 @@ def _parse_ts(s: str) -> datetime | None:
         return None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    return dt
+    return dt.astimezone(timezone.utc)
 
 
 def _iter_records(path: Path) -> Iterable[dict]:
@@ -195,7 +195,12 @@ def cmd_report(args: argparse.Namespace) -> int:
 
     if args.rule:
         print(f"### Top violations ({args.rule})")
-        recs_sorted = sorted(records, key=lambda r: r.get("ts", ""), reverse=True)
+        recs_sorted = sorted(
+            records,
+            key=lambda r: _parse_ts(r.get("ts", ""))
+            or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
         for i, rec in enumerate(recs_sorted[:20], 1):
             ts = rec.get("ts", "?")
             ctx = rec.get("ctx", {})

@@ -27,7 +27,7 @@ python3 "$CLAUDE_PROJECT_DIR/.claude/scripts/guardrails_report.py" report "$@"
 
 ## 出力例
 
-```
+```text
 ## Guardrails Report (last 7 days)
 Project: claude-context-manager
 
