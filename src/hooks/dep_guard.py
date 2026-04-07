@@ -72,8 +72,12 @@ def extract_packages(command: str) -> tuple[str, list[str]] | None:
 
 
 def _fetch_json(url: str) -> Any:
+    # Defense against file://, ftp://, etc. Only https is permitted.
+    if not url.startswith("https://"):
+        raise ValueError(f"Refusing non-https URL: {url!r}")
     req = urllib.request.Request(url, headers={"User-Agent": "dep-guard/1.0"})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+    # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:  # nosec B310
         return json.loads(r.read())
 
 
