@@ -1,0 +1,10 @@
+id: R-002
+name: git-add-wildcard
+severity: warn
+trigger:
+  event: post_tool_use
+  tool: [Bash]
+match:
+  command_regex: '\bgit\s+add\s+(-A\b|-u\b|--all\b|\.(\s|$)|\S*\*)'
+action: log
+message: "git add with wildcard/all detected: {command}"

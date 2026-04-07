@@ -1,0 +1,11 @@
+id: R-007
+name: commit-without-tests
+severity: warn
+trigger:
+  event: post_tool_use
+  tool: [Bash]
+match:
+  command_regex: '\bgit\s+commit\b'
+  absent_in_history: 'make test-all'
+action: log
+message: "git commit without recent 'make test-all': {command}"

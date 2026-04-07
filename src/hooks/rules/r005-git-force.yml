@@ -1,0 +1,10 @@
+id: R-005
+name: git-force-or-no-verify
+severity: warn
+trigger:
+  event: post_tool_use
+  tool: [Bash]
+match:
+  command_regex: '\bgit\s+\S+.*(--no-verify|--force(?!-with-lease)|(?<!\w)-f(?!\w))'
+action: log
+message: "Dangerous git flag detected: {command}"
