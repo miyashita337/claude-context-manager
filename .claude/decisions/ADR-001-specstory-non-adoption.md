@@ -35,6 +35,19 @@ Issue #2（2026-02-21 Close）で SpecStory の導入可否を検証し、PR #5 
 - 構造化マスキング（`tool_use.input` のパスのみ redact、`message.content[].text` の PII 検出等）を**フィールド単位で制御**可能。
 - Markdown 正規表現頼みの誤爆リスクを排除できる。
 
+#### 既存 TypeScript 側 Markdown Writer との役割分担
+`src/core/markdown-writer.ts`（`MarkdownWriter` クラス）は既に存在するが、**用途が異なる**ため重複ではない：
+
+| レイヤー | 既存 TS (`src/core/markdown-writer.ts`) | 新規 Python (`src/exporters/` 予定) |
+|---|---|---|
+| 用途 | **リアルタイム** セッションログ → Obsidian 互換 Markdown | **バッチ** JSONL → 匿名化済み共有用 Markdown |
+| データソース | SessionLogger 経由の LogEntry（`src/types/session.ts`） | `~/.claude/projects/**/*.jsonl`（Claude Code 公式） |
+| 呼び出し元 | `src/cli/finalize-session.ts`（セッション終了時） | Token Analyzer CLI / 注意横取り検知レポーター |
+| 匿名化 | なし（個人利用前提） | 必須（他者共有前提） |
+| tokens_estimate | 推定値（`tokens_estimate`） | JSONL `usage` の正確値 |
+
+将来的に共通処理（Markdown ヘッダ生成、frontmatter 整形等）を抽出する余地はあるが、Phase 1 では別モジュールとして独立実装し、Phase 2 以降で共通化を検討する。
+
 ### 5. マルチエージェント対応（反証への応答）
 - Skeptic 論拠「SpecStory は Codex/Cursor/Gemini にも対応」は弱い：
   - Gemini Code Assist PoC (#137) がマージ済みで本プロジェクトも multi-agent 化の兆候あり。
@@ -43,7 +56,7 @@ Issue #2（2026-02-21 Close）で SpecStory の導入可否を検証し、PR #5 
 
 ## 代替アーキテクチャ
 
-```
+```text
 [Hot path — ブロッキング]
   UserPromptSubmit hook → JSONL tail read
   → topic-server（埋め込み）→ Haiku判定 → block/warn
