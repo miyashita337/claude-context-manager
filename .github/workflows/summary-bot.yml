@@ -1,5 +1,16 @@
 name: Summary Bot
 
+# Issue / PR が開かれたら、内容を要約したポエムをコメントする。
+#
+# LLM は Google AI Studio の Gemini API（Flash 系は無料枠）を使う。
+# 以前は actions/ai-inference + GitHub Models だったが、GitHub Models が廃止過程
+# （scheduled retirement brownout）に入り 410 を返すようになり、本ジョブは 2026-08 以降
+# 何も投稿しない死んだ状態だった（Issue #152）。actions/ai-inference@v1 自体も
+# provider が Copilot CLI 専用へ移行しており、runner 上に認証済み Copilot CLI を
+# 要求するため代替にならない。よって API を直接叩く形に変更した。
+#
+# 必要な secret: GEMINI_API_KEY（Qodo pr-agent と共用）
+
 on:
   issues:
     types: [opened]
@@ -9,56 +20,85 @@ on:
 permissions:
   issues: write
   pull-requests: write
-  models: read
   contents: read
 
 jobs:
   summarize:
     runs-on: ubuntu-latest
+    # 要約は付加価値であり、失敗しても本体の CI を妨げない
     continue-on-error: true
     steps:
       - name: Generate poem summary
         id: ai
-        uses: actions/ai-inference@v1
-        with:
-          model: openai/gpt-4o-mini
-          max-tokens: 300
-          system-prompt: |
-            あなたは GitHub Issue/PR を読んで情報密度の高いポエム調要約を書くボットです。
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # ${{ }} を run: の中へ直接展開するとスクリプトインジェクションになるため env 経由で渡す
+          TITLE: ${{ github.event.issue.title || github.event.pull_request.title }}
+          BODY: ${{ github.event.issue.body || github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
 
-            要件:
-            - 3〜6行で書く
-            - 何の問題/機能か、原因や対策など具体的な事実を必ず含める
-            - ポエム調・詩的なリズムで書く（比喩OKだが内容は具体的に）
-            - 読んだ人が「何の話か」が30秒でわかるレベルの情報量
-            - 日本語で書く
-            - 要約のみを出力し、前置きや説明は不要
+          if [ -z "${GEMINI_API_KEY:-}" ]; then
+            echo "::error::GEMINI_API_KEY secret is not set" >&2
+            exit 1
+          fi
 
-            良い例（日本語文字化けIssueの場合）:
-            ひらがなが+0x90オフセットでカタカナへ化ける怪、
-            IMEカーソルが日本語を飲み込む二つの罪。
-            accessibilitySupport設定で静めながら、
-            根本原因は闇の中、観察続ける。
-          prompt: |
-            タイトル: ${{ github.event.issue.title || github.event.pull_request.title }}
+          SYSTEM_PROMPT='あなたは GitHub Issue/PR を読んで情報密度の高いポエム調要約を書くボットです。
 
-            本文:
-            ${{ github.event.issue.body || github.event.pull_request.body }}
+          要件:
+          - 3〜6行で書く
+          - 何の問題/機能か、原因や対策など具体的な事実を必ず含める
+          - ポエム調・詩的なリズムで書く（比喩OKだが内容は具体的に）
+          - 読んだ人が「何の話か」が30秒でわかるレベルの情報量
+          - 日本語で書く
+          - 要約のみを出力し、前置きや説明は不要
+
+          良い例（日本語文字化けIssueの場合）:
+          ひらがなが+0x90オフセットでカタカナへ化ける怪、
+          IMEカーソルが日本語を飲み込む二つの罪。
+          accessibilitySupport設定で静めながら、
+          根本原因は闇の中、観察続ける。'
+
+          # 本文は長くなりうるので先頭 8000 文字に制限する（無料枠のトークン節約）
+          jq -n \
+            --arg system "$SYSTEM_PROMPT" \
+            --arg user "タイトル: ${TITLE}"$'\n\n'"本文:"$'\n'"$(printf '%s' "${BODY:-}" | head -c 8000)" \
+            '{
+               system_instruction: { parts: [ { text: $system } ] },
+               contents: [ { parts: [ { text: $user } ] } ],
+               generationConfig: { maxOutputTokens: 1024 }
+             }' > request.json
+
+          # gemini-3.7-flash は thinking にトークンを使うため maxOutputTokens に余裕を持たせる
+          # （2.5-flash は 300 だと finishReason=MAX_TOKENS で途中で切れることを実測済み）
+          HTTP_CODE=$(curl -sS -o response.json -w '%{http_code}' \
+            -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=${GEMINI_API_KEY}" \
+            -H 'Content-Type: application/json' \
+            --data @request.json)
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Gemini API returned HTTP ${HTTP_CODE}" >&2
+            jq -r '.error.message // "no error message"' response.json >&2
+            exit 1
+          fi
+
+          FINISH=$(jq -r '.candidates[0].finishReason // "UNKNOWN"' response.json)
+          jq -r '.candidates[0].content.parts[0].text // ""' response.json > poem.txt
+
+          if [ "$FINISH" != "STOP" ] || [ ! -s poem.txt ]; then
+            echo "::error::unusable response (finishReason=${FINISH}, bytes=$(wc -c < poem.txt))" >&2
+            exit 1
+          fi
 
       - name: Post poem as comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
-          RESPONSE: ${{ steps.ai.outputs.response }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          if [ -z "${RESPONSE:-}" ]; then
-            echo "ai-inference returned empty response; skipping comment"
-            exit 0
-          fi
           {
             echo "> 🎭 *AIポエムサマリー*"
             echo ">"
-            printf '%s\n' "$RESPONSE" | sed 's/^/> /'
+            sed 's/^/> /' poem.txt
           } | gh issue comment "$NUMBER" --repo "$REPO" --body-file -
