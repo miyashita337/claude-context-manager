@@ -91,7 +91,8 @@ jobs:
           PROMPT="あなたは PR レビュアーです。ワークスペース直下の .cursor-review-tmp/pr.diff にこの PR の unified diff があります（このファイル自体はレビュー対象外の入力データ）。
           ${BUGBOT_NOTE}
           必要ならワークスペース内の関連ファイルを読んで文脈を確認してください。
-          出力は次のスキーマの JSON のみとする（コードフェンス・前置き・後置きは禁止）:
+          出力は次のスキーマの JSON のみとする。出力の最初の文字は { 、最後の文字は } であること。
+          前置き・後置き・作業経過の文章・コードフェンスは一切出力しない:
           {\"summary\": \"日本語の総評 markdown（重要度順の指摘一覧を含む）\",
            \"comments\": [{\"path\": \"diff 内のファイルパス\", \"line\": 123, \"side\": \"RIGHT\", \"body\": \"日本語の指摘\"}]}
           制約: comments は最大 10 件。line は diff に含まれる行のみ（追加行・文脈行は side=RIGHT、削除行は LEFT）。
@@ -114,13 +115,26 @@ jobs:
           fi
           # JSON エンベロープ（実機確認済み形: {"type":"result","is_error":false,"result":"..."}）から本文を抽出
           jq -r '.result' /tmp/agent.json > /tmp/review.raw
-          # モデルがコードフェンスを付けた場合に備えて除去
-          sed -e 's/^```json$//' -e 's/^```$//' /tmp/review.raw > /tmp/review.json
-          # 構文だけでなく型も検証（summary: string / comments: array）
-          if ! jq -e '(.summary | type == "string") and (.comments | type == "array")' /tmp/review.json > /dev/null 2>&1; then
-            # JSON 契約違反時は全文をサマリ扱いにフォールバック（サイレント失敗させない）
-            jq -n --rawfile txt /tmp/review.raw '{summary: $txt, comments: []}' > /tmp/review.json
-          fi
+          # モデルは指示しても前置き文やコードフェンスを付けることがある（スモークテストで実測）。
+          # 最初の '{' 〜 最後の '}' を抽出してパースし、型検証（summary: string / comments: array）まで
+          # 通らなければ全文をサマリ扱いにフォールバック（サイレント失敗させない）
+          python3 - <<'PY'
+          import json
+
+          raw = open('/tmp/review.raw', encoding='utf-8').read()
+          obj = None
+          start, end = raw.find('{'), raw.rfind('}')
+          if start != -1 and end > start:
+              try:
+                  obj = json.loads(raw[start:end + 1])
+              except ValueError:
+                  obj = None
+          if not (isinstance(obj, dict)
+                  and isinstance(obj.get('summary'), str)
+                  and isinstance(obj.get('comments'), list)):
+              obj = {'summary': raw, 'comments': []}
+          json.dump(obj, open('/tmp/review.json', 'w', encoding='utf-8'), ensure_ascii=False)
+          PY
 
       # インライン投稿: reviews API の comments[] 一括（API 1 回、content 生成制限 80req/min に強い）。
       # diff 外の行指定で 422 になったら全指摘をサマリコメントに退避（一括 API は部分成功しないため）
