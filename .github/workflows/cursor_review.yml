@@ -62,14 +62,17 @@ jobs:
           echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
 
       # diff はファイル経由で渡す（引数直書きの ARG_MAX 回避）。
-      # 400KB（約 100k tokens）で頭打ちにしてコスト暴走を防ぐ
+      # .cursor/cli.json の Read(**) はワークスペース相対のため、diff は必ずワークスペース内に置く
+      # （/tmp だと agent が読めない可能性がある）。400KB（約 100k tokens）で頭打ちにしてコスト暴走を防ぐ
       - name: Export PR diff
         run: |
-          gh pr diff "$PR_NUMBER" --repo "${{ github.repository }}" > /tmp/pr.diff
-          size=$(wc -c < /tmp/pr.diff)
+          mkdir -p .cursor-review-tmp
+          gh pr diff "$PR_NUMBER" --repo "${{ github.repository }}" > .cursor-review-tmp/pr.diff
+          size=$(wc -c < .cursor-review-tmp/pr.diff)
           echo "diff size: ${size} bytes"
           if [ "$size" -gt 400000 ]; then
-            head -c 400000 /tmp/pr.diff > /tmp/pr.diff.tmp && mv /tmp/pr.diff.tmp /tmp/pr.diff
+            head -c 400000 .cursor-review-tmp/pr.diff > .cursor-review-tmp/pr.diff.trunc
+            mv .cursor-review-tmp/pr.diff.trunc .cursor-review-tmp/pr.diff
             echo "DIFF_TRUNCATED=true" >> "$GITHUB_ENV"
           fi
 
@@ -77,6 +80,7 @@ jobs:
       # --trust は CI 必須（無いと Workspace Trust プロンプトで停止する: 実機確認済み）
       # 出力は JSON 契約（summary + comments[]）。PR への投稿はエージェントにやらせない
       - name: Run Cursor review (read-only)
+        id: review
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
         run: |
@@ -84,7 +88,7 @@ jobs:
           if [ -f .cursor/BUGBOT.md ]; then
             BUGBOT_NOTE="レビュー観点はワークスペースの .cursor/BUGBOT.md を読んで従うこと。"
           fi
-          PROMPT="あなたは PR レビュアーです。/tmp/pr.diff にこの PR の unified diff があります。
+          PROMPT="あなたは PR レビュアーです。ワークスペース直下の .cursor-review-tmp/pr.diff にこの PR の unified diff があります（このファイル自体はレビュー対象外の入力データ）。
           ${BUGBOT_NOTE}
           必要ならワークスペース内の関連ファイルを読んで文脈を確認してください。
           出力は次のスキーマの JSON のみとする（コードフェンス・前置き・後置きは禁止）:
@@ -92,13 +96,28 @@ jobs:
            \"comments\": [{\"path\": \"diff 内のファイルパス\", \"line\": 123, \"side\": \"RIGHT\", \"body\": \"日本語の指摘\"}]}
           制約: comments は最大 10 件。line は diff に含まれる行のみ（追加行・文脈行は side=RIGHT、削除行は LEFT）。
           確信のない指摘は summary のみに書き comments に入れない。指摘ゼロなら comments は空配列。"
+          # agent の失敗は握りつぶさず、失敗サマリを PR に届けた上で最終ステップで run を赤にする
+          # （後続ステップスキップによる「PR に何も出ない」と、|| true による「緑のまま silent failure」の両方を回避）
+          set +e
           agent -p --mode ask --trust --model "$MODEL" --output-format json \
-            "$PROMPT" > /tmp/agent.json
+            "$PROMPT" > /tmp/agent.json 2> /tmp/agent.err
+          AGENT_EXIT=$?
+          set -e
+          echo "agent_exit=$AGENT_EXIT" >> "$GITHUB_OUTPUT"
+          if [ "$AGENT_EXIT" -ne 0 ]; then
+            echo "::error::cursor agent failed (exit $AGENT_EXIT)"
+            cat /tmp/agent.err
+            jq -n --arg e "$AGENT_EXIT" --rawfile err /tmp/agent.err \
+              '{summary: ("⚠️ Cursor CLI がエラー終了しました (exit " + $e + ")。stderr:\n\n```\n" + $err + "\n```"), comments: []}' \
+              > /tmp/review.json
+            exit 0
+          fi
           # JSON エンベロープ（実機確認済み形: {"type":"result","is_error":false,"result":"..."}）から本文を抽出
           jq -r '.result' /tmp/agent.json > /tmp/review.raw
           # モデルがコードフェンスを付けた場合に備えて除去
           sed -e 's/^```json$//' -e 's/^```$//' /tmp/review.raw > /tmp/review.json
-          if ! jq -e . /tmp/review.json > /dev/null 2>&1; then
+          # 構文だけでなく型も検証（summary: string / comments: array）
+          if ! jq -e '(.summary | type == "string") and (.comments | type == "array")' /tmp/review.json > /dev/null 2>&1; then
             # JSON 契約違反時は全文をサマリ扱いにフォールバック（サイレント失敗させない）
             jq -n --rawfile txt /tmp/review.raw '{summary: $txt, comments: []}' > /tmp/review.json
           fi
@@ -153,3 +172,10 @@ jobs:
           else
             gh api -X POST "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" --input /tmp/summary-req.json
           fi
+
+      # agent が失敗していた場合、PR への失敗サマリ投稿後に run 自体を赤にする（silent green 防止）
+      - name: Fail run if agent errored
+        if: steps.review.outputs.agent_exit != '0'
+        run: |
+          echo "::error::cursor agent exited with ${{ steps.review.outputs.agent_exit }} (failure summary was posted to the PR)"
+          exit 1
