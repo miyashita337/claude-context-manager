@@ -28,8 +28,17 @@ export const config = {
   geminiTemperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.7'),
   geminiMaxTokens: parseInt(process.env.GEMINI_MAX_TOKENS || '2000', 10),
 
-  // Nano Banana settings (uses geminiApiKey)
-  nanoBananaModel: process.env.NANOBANANA_MODEL || 'gemini-3.1-flash-image-preview',
+  // Image generation settings (OpenAI Images API, uses openaiApiKey)
+  // 既定値の出典: node_modules/openai/resources/images.d.ts:62 (ImageModel),
+  // :242-287 (ImageGenerateParams の size / quality / output_format)
+  imageModel: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
+  imageSize: (process.env.OPENAI_IMAGE_SIZE || '1536x1024') as
+    | 'auto'
+    | '1024x1024'
+    | '1536x1024'
+    | '1024x1536',
+  imageQuality: (process.env.OPENAI_IMAGE_QUALITY || 'medium') as 'auto' | 'low' | 'medium' | 'high',
+  imageFormat: (process.env.OPENAI_IMAGE_FORMAT || 'png') as 'png' | 'jpeg' | 'webp',
 
   // Legacy aliases for backward compatibility
   get defaultModel() { return this.openaiModel; },

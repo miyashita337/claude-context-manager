@@ -5,7 +5,7 @@ import {
   CallToolRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { ChatCompletionArgsSchema, callChatGPT } from './tools/chat-completion.js';
-import { NanoBananaArgsSchema, generateDiagram } from './tools/nanobanana.js';
+import { GenerateImageArgsSchema, generateImage } from './tools/image-generation.js';
 
 // MCPサーバーの作成
 export function createServer() {
@@ -57,7 +57,7 @@ export function createServer() {
         },
         {
           name: 'generate-diagram',
-          description: 'Generate a conceptual diagram or documentation image using Nano Banana (Gemini image model). Saves to docs/images/. NOT for flowcharts/architecture (use Mermaid).',
+          description: 'Generate a conceptual diagram or documentation image using the OpenAI Images API (gpt-image-1). Saves to docs/images/. NOT for flowcharts/architecture (use Mermaid).',
           inputSchema: {
             type: 'object',
             properties: {
@@ -73,15 +73,20 @@ export function createServer() {
                 type: 'string',
                 description: 'Output directory (default: docs/images/)',
               },
-              aspect_ratio: {
+              size: {
                 type: 'string',
-                description: 'Aspect ratio (default: 16:9)',
-                enum: ['1:1', '16:9', '4:3', '3:4', '9:16'],
+                description: 'Image size (default: 1536x1024 landscape)',
+                enum: ['auto', '1024x1024', '1536x1024', '1024x1536'],
               },
-              resolution: {
+              quality: {
                 type: 'string',
-                description: 'Resolution (default: 2K)',
-                enum: ['512px', '1K', '2K', '4K'],
+                description: 'Rendering quality (default: medium)',
+                enum: ['auto', 'low', 'medium', 'high'],
+              },
+              output_format: {
+                type: 'string',
+                description: 'File format (default: png)',
+                enum: ['png', 'jpeg', 'webp'],
               },
             },
             required: ['prompt'],
@@ -117,8 +122,8 @@ export function createServer() {
     }
 
     if (name === 'generate-diagram') {
-      const validatedArgs = NanoBananaArgsSchema.parse(args);
-      const result = await generateDiagram(validatedArgs);
+      const validatedArgs = GenerateImageArgsSchema.parse(args);
+      const result = await generateImage(validatedArgs);
 
       if (!result.imagePath) {
         return {
